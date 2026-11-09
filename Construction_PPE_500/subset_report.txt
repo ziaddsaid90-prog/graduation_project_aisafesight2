@@ -1,0 +1,34 @@
+Source: D:\construction-ppe\construction-ppe
+Output: D:\construction-ppe\Construction_PPE_500
+Mode: COPY
+Seed: 42
+Pairs in source: 1000 (train=800, val=200)
+Selected images: 500
+Selected from each split: train=404, val=96
+Missing/invalid labels encountered and replaced: 0
+Selected labels with zero boxes (background images): 0
+Total boxes in subset: 7414
+
+ id  class         boxes  images
+  0  helmet          762     378
+  1  gloves          942     339
+  2  vest            887     398
+  3  boots          1172     352
+  4  goggles         391     275
+  5  Person         1211     498
+  6  no_helmet       430     222
+  7  no_goggle       182     147
+  8  no_gloves       540     221
+  9  no_boots        400     167
+ 10  forklift        193     135
+ 11  no_vest         304     200
+
+=== Copy verification ===
+Image files in output: 500
+Label files in output: 500
+Unpaired files in output: 0
+Checksum mismatches after copy: 0
+
+Attribution: Ultralytics Construction-PPE Dataset, Ultralytics team, November 2026, CC BY 4.0.
+Changes: random subset of 500 images (seed above); train/val folders flattened into images/ and labels/;
+original split recorded in selection_manifest.csv. Files are otherwise unmodified.

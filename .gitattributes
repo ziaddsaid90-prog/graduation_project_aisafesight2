@@ -1,0 +1,12 @@
+# Images and videos are stored with Git LFS (run `git lfs install` once after installing git)
+*.jpg  filter=lfs diff=lfs merge=lfs -text
+*.JPG  filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.png  filter=lfs diff=lfs merge=lfs -text
+*.webp filter=lfs diff=lfs merge=lfs -text
+*.mp4  filter=lfs diff=lfs merge=lfs -text
+*.avi  filter=lfs diff=lfs merge=lfs -text
+*.mov  filter=lfs diff=lfs merge=lfs -text
+
+# YOLO label files stay as normal text so they can be reviewed in pull requests
+*.txt text eol=lf
