@@ -1,3 +1,0 @@
-# Images the team decided NOT to use (one per line): <source>/<image file name>
-# Example:
-# barwita/17.jpg

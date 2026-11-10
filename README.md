@@ -23,15 +23,27 @@ pip install pillow
 
 ## 2. Folder structure
 
-| Folder | What it is | Labels? | Status |
-|---|---|---|---|
-| `Construction_PPE_500/` | 500-image random subset of the Ultralytics Construction-PPE dataset (CC BY 4.0) | Yes (original 12 classes) | **Ready**, do not edit |
-| `barwita/` | Wheelbarrow images (web) | No | **Needs labelling** |
-| `Concrete Mixer Truck/` | Concrete mixer truck images (web) | No | **Needs labelling** |
-| `framing/` | 15 s overhead site video plus extracted frames | No | **Needs labelling** (every 5th frame, 31 frames) |
-| `annotations/<source>/` | **Where our own YOLO labels go** | – | Filled by the team |
-| `tools/prepare_dataset.py` | Remap, split and QA tool | – | Ready |
-| `prepared/` | Generated training set (not in git) | – | Rebuilt locally |
+```
+TITAN_AI_Dataset/
+├── Construction_PPE_500/        public PPE subset, already labelled (do not edit)
+├── raw/                         original files, never edited
+│   ├── barwita/                 74 wheelbarrow images (web)
+│   ├── mixer/                   52 concrete mixer truck images (web)
+│   └── framing/                 15 s overhead site video + 151 extracted frames
+├── annotated/                   what we train on
+│   ├── barwita/   images/ labels/ annotation_report.txt   (72 images)
+│   ├── mixer/     images/ labels/ annotation_report.txt   (47 images)
+│   └── framing/   images/ labels/ annotation_report.txt   (31 keyframes, every 5th frame)
+├── preview/<source>/            annotated images with boxes drawn on, for review only
+├── tools/                       prepare_dataset.py (remap/build/check), prelabel.py
+└── prepared/                    generated training set (not in git, rebuilt locally)
+```
+
+| Folder | Labels? | Status |
+|---|---|---|
+| `Construction_PPE_500/` | Yes (original 12 classes, remapped by `remap`) | **Ready** |
+| `annotated/barwita/`, `annotated/mixer/`, `annotated/framing/` | Yes (TITAN v1 classes) | **Labelled 2026-11-10**, see each `annotation_report.txt` for images that need manual review |
+| `raw/` | No | Kept for reference. Duplicates, collages and images with burned-in boxes were left out of `annotated/` |
 
 **Not in this repo:** `closed_open chain/` (open/closed chain barrier). The images are AI-generated, so this task is **parked until real TITAN recordings exist**. Nobody labels or trains on chains in Stage 1.
 
@@ -56,22 +68,22 @@ The ID order is fixed. Configure your annotation tool with exactly this order:
 1. **Label every class present in the image**, not only the folder's class. A worker in a mixer photo still gets `person`, `helmet`/`no_helmet` and `vest`/`no_vest` boxes.
 2. Draw tight boxes. Label partly hidden objects if more than ~30% is visible.
 3. Occlusion alone is not "missing PPE". Use `no_helmet`/`no_vest` only when the head or torso is clearly visible.
-4. Skip unusable images (watermark covering the object, collage, drawing) by adding them to `annotations/exclude.txt`, e.g. `barwita/17.jpg`.
+4. Skip unusable images (watermark covering the object, collage, drawing) by not copying them into `annotated/<source>/images/`, or list them in `annotated/exclude.txt`, e.g. `barwita/17.jpg`.
 5. An **empty** `.txt` means "checked, contains none of our classes".
 6. Before starting, the labellers label the same 20 images and compare results, so everyone labels the same way.
 
 ### How to export labels
-Label in **CVAT** or **Label Studio** and export as **YOLO** format. Copy only the `.txt` files into
-`annotations/<source>/`, keeping the image's file name: `annotations/barwita/105.txt` for `barwita/105.jpg`.
-Source names are: `barwita`, `mixer`, `framing`.
+Label in **CVAT** or **Label Studio** and export as **YOLO** format. Put the image in `annotated/<source>/images/`
+and its `.txt` in `annotated/<source>/labels/` with the same file name: `annotated/barwita/labels/105.txt` for
+`annotated/barwita/images/105.jpg`. Source names are: `barwita`, `mixer`, `framing`.
 
 ## 4. Team assignments (Stage 1)
 
 | Member | Works on | Writes only in | Branch |
 |---|---|---|---|
-| Member 1 (data lead) | `framing` keyframes + runs `build`/`check`, reviews label PRs | `annotations/framing/`, `tools/` | `label/framing` |
-| Member 2 | `Concrete Mixer Truck` (52 images) | `annotations/mixer/` | `label/mixer` |
-| Member 3 | `barwita` (74 images) | `annotations/barwita/` | `label/barwita` |
+| Member 1 (data lead) | `framing` keyframes + runs `build`/`check`, reviews label PRs | `annotated/framing/`, `tools/` | `label/framing` |
+| Member 2 | `mixer` (52 images) | `annotated/mixer/` | `label/mixer` |
+| Member 3 | `barwita` (74 images) | `annotated/barwita/` | `label/barwita` |
 | Member 4 | Video pipeline: video/RTSP → pretrained YOLO + ByteTrack → evidence frames | `src/pipeline/` | `feat/pipeline` |
 | Member 5 | Event engine (zones, rules, tests) + record our own Hikvision test footage | `src/events/`, `configs/` | `feat/events` |
 
@@ -82,7 +94,7 @@ Each person writes only in their own folder, so pull requests don't conflict.
 git checkout main && git pull
 git checkout -b label/barwita        # once; afterwards: git checkout label/barwita && git merge main
 # ... add/modify your files ...
-git add annotations/barwita
+git add annotated/barwita
 git commit -m "Label barwita 100-130"
 git push -u origin label/barwita     # then open a Pull Request on GitHub
 ```

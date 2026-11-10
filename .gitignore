@@ -5,7 +5,7 @@ prepared/
 closed_open chain/
 
 # Same frames as original_video_frames but with a burned-in timestamp (unusable for training)
-framing/original_video_frames_10fps/
+raw/framing/original_video_frames_10fps/
 
 # Training outputs / local environments
 runs/

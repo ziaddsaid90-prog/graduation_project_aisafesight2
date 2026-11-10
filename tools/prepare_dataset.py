@@ -19,17 +19,17 @@ Typical order
   python tools/prepare_dataset.py build            # re-run whenever new labels arrive
   python tools/prepare_dataset.py check --n 40
 
-Where labels for our own (unlabelled) folders go
-------------------------------------------------
-Annotators export YOLO .txt files (TITAN class IDs, see CLASSES) into
-    <root>/annotations/<source name>/<image stem>.txt
-e.g. annotations/barwita/105.txt, annotations/framing/frame_00041_t0004000ms.txt
+Folder layout for our own sources
+---------------------------------
+    raw/<source>/                 original downloads / video frames (never edited)
+    annotated/<source>/images/    the images we use for training (copies, unusable ones left out)
+    annotated/<source>/labels/    one YOLO .txt per image (TITAN class IDs, see CLASSES)
+    preview/<source>/             images with boxes drawn on them, for human review only
 
   * An image counts as labelled only if its .txt exists.
   * An EMPTY .txt means "checked, contains none of our classes" (a background image).
-  * Images the team decides not to use go in annotations/exclude.txt, one
-    "<source>/<image file name>" per line. Do this for skipped images, because
-    CVAT/Label Studio exports write an empty .txt for every image, even unlabelled ones.
+  * To drop an image later, list it in annotated/exclude.txt as "<source>/<image file name>",
+    or simply delete it from annotated/<source>/images/.
 
 Requires only: Python 3.9+, Pillow (for `check`).
 """
@@ -49,7 +49,7 @@ from typing import Callable
 
 ROOT = Path(__file__).resolve().parent.parent          # D:\TITAN_AI_Dataset
 PREPARED = ROOT / "prepared"
-ANNOT = ROOT / "annotations"
+ANNOT = ROOT / "annotated"
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ PPE_TO_TITAN = {
 class Source:
     name: str
     images: Path
-    labels: Path | None              # None -> labels come from annotations/<name>/
+    labels: Path | None              # None -> labels come from annotated/<name>/
     group_fn: Callable[[Path], str]
     step: int = 1
     pin: str | None = None
@@ -112,11 +112,11 @@ def barwita_group(p: Path) -> str:
 SOURCES = [
     Source("ppe", PREPARED / "ppe_remapped" / "images", PREPARED / "ppe_remapped" / "labels",
            own_group("ppe")),
-    Source("barwita", ROOT / "barwita", None, barwita_group),
-    Source("mixer", ROOT / "Concrete Mixer Truck" / "Concrete Mixer Truck", None, own_group("mixer")),
-    # One 15 s clip = one group. Every 5th frame = one frame per ~0.5 s.
-    Source("framing", ROOT / "framing" / "original_video_frames", None,
-           lambda p: "framing:original_video", step=5),
+    Source("barwita", ANNOT / "barwita" / "images", ANNOT / "barwita" / "labels", barwita_group),
+    Source("mixer", ANNOT / "mixer" / "images", ANNOT / "mixer" / "labels", own_group("mixer")),
+    # One 15 s clip = one group. annotated/framing already holds only every 5th frame (~0.5 s apart).
+    Source("framing", ANNOT / "framing" / "images", ANNOT / "framing" / "labels",
+           lambda p: "framing:original_video"),
 ]
 
 
