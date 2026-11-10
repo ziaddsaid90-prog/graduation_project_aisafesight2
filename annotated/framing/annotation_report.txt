@@ -17,7 +17,7 @@ mixer truck and a dump truck, then walks back and parks the wheelbarrow.
 ----------
 Images annotated ............ 31
 Images with no objects ...... 0
-Total boxes ................. 152
+Total boxes ................. 183
 
   id  class           boxes
    0  person            31
@@ -28,6 +28,8 @@ Total boxes ................. 152
    5  wheelbarrow       25
    6  mixer_truck       13
    7  vehicle_other     21   (the dump truck, including frames where only its rear bumper shows at the top edge)
+   8  chain_closed      11   (frames 00001-00036 and 00141-00151)
+   9  chain_open        20   (frames 00041-00136)
 
 YOLO format check: PASSED (31 images <-> 31 label files, class ids 0-7, normalized, inside the image).
 
@@ -35,6 +37,13 @@ YOLO format check: PASSED (31 images <-> 31 label files, class ids 0-7, normaliz
 ---------
 Person and truck boxes from the pretrained COCO YOLO11l were checked on every frame and kept where tight.
 Helmet, vest and wheelbarrow boxes were placed by hand on zoomed crops around the worker in each frame.
+
+3b. Chain barrier (classes 8/9, added 2026-11-10)
+-------------------------------------------------
+One box per frame around the whole barrier: both posts and the chain between them.
+chain_closed = chain hangs between the posts across the entrance. chain_open = chain lowered to the ground.
+Timeline: closed 0-3.5 s -> lowered by 4.0 s -> open while the worker goes to the trucks and back ->
+worker re-hooks it at ~13.5-14 s -> closed 14-15 s.
 
 4. Images needing manual review
 -------------------------------
@@ -44,6 +53,9 @@ frame_00076 to 00096    Worker stands at the mixer truck lifting a load/the tray
                         visible, so it is not labelled in these frames.
 frame_00021 to 00051, 00121  The dump truck shows only its rear bumper/wheels at the top edge (~10% of the frame
                         height). Labelled vehicle_other; remove these boxes if you prefer only >30% visible vehicles.
+frame_00041            Chain is just being lowered (still sagging, not on the ground). Labelled chain_open.
+frame_00136, 00141     Worker is handling the chain. 00136 = still on the ground (open), 00141 = hooked
+                        back up across the entrance (closed). The exact switch moment is a judgement call.
 frame_00051             A thin sliver of the mixer truck at the top edge is NOT labelled (too little visible).
 
 5. Not done

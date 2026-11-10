@@ -45,7 +45,8 @@ TITAN_AI_Dataset/
 | `annotated/barwita/`, `annotated/mixer/`, `annotated/framing/` | Yes (TITAN v1 classes) | **Labelled 2026-11-10**, see each `annotation_report.txt` for images that need manual review |
 | `raw/` | No | Kept for reference. Duplicates, collages and images with burned-in boxes were left out of `annotated/` |
 
-**Not in this repo:** `closed_open chain/` (open/closed chain barrier). The images are AI-generated, so this task is **parked until real TITAN recordings exist**. Nobody labels or trains on chains in Stage 1.
+**Chain barrier:** classes 8/9 (`chain_closed`, `chain_open`) are labelled only in `annotated/framing/` (real footage).
+**Not in this repo:** `closed_open chain/` (AI-generated chain images). Do not label or train on it; more real chain footage comes with the TITAN recordings.
 
 **Never commit TITAN company footage to this repository.** Raw site recordings go to the team's private storage.
 
@@ -63,6 +64,8 @@ The ID order is fixed. Configure your annotation tool with exactly this order:
 | 5 | `wheelbarrow` | A manual wheelbarrow or two-wheel concrete cart |
 | 6 | `mixer_truck` | A concrete mixer truck |
 | 7 | `vehicle_other` | Any other vehicle (truck, car, loader, forklift) |
+| 8 | `chain_closed` | The entrance chain barrier hanging between its two posts (entrance blocked). One box around both posts and the chain |
+| 9 | `chain_open` | The same barrier lowered to the ground or unhooked (entrance passable). Same box: both posts and the chain |
 
 ### Labelling rules (read before starting)
 1. **Label every class present in the image**, not only the folder's class. A worker in a mixer photo still gets `person`, `helmet`/`no_helmet` and `vest`/`no_vest` boxes.
@@ -115,7 +118,7 @@ if any group would land in both train and val. See `prepared/titan_v1/build_repo
 
 - **Now:** label `framing`, `mixer`, `barwita` → first training run (pretrained YOLO small/nano, imgsz 960) → per-class error analysis.
 - **Before TITAN footage:** record our own overhead test video with the Hikvision camera (people with/without PPE, pushing a wheelbarrow). This is the test set and is never used for training.
-- **After TITAN footage:** label TITAN frames (including the chain barrier) → fine-tune the Stage 1 model → evaluate on unseen TITAN recording days.
+- **After TITAN footage:** label TITAN frames (more chain barrier examples) → fine-tune the Stage 1 model → evaluate on unseen TITAN recording days.
 
 ## Attribution
 `Construction_PPE_500` is a subset of the **Ultralytics Construction-PPE Dataset**, Ultralytics team, November 2026, CC BY 4.0

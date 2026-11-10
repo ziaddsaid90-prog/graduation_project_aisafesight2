@@ -65,6 +65,8 @@ CLASSES = [
     "wheelbarrow",    # 5
     "mixer_truck",    # 6
     "vehicle_other",  # 7
+    "chain_closed",   # 8  chain barrier hanging across the entrance (blocked)
+    "chain_open",     # 9  chain lowered to the ground / unhooked (passable)
 ]
 
 # Ultralytics Construction-PPE id -> TITAN id. Ids not listed are dropped
@@ -323,7 +325,7 @@ def cmd_check(args):
     random.Random(args.seed).shuffle(imgs)
     out = PREPARED / "qa"
     safe_reset(out)
-    colors = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6"]
+    colors = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6", "#800000", "#aaffc3"]
     for img in imgs[: args.n]:
         lbl = ds / "labels" / img.parent.name / f"{img.stem}.txt"
         boxes, _ = parse_yolo(lbl, len(CLASSES)) if lbl.exists() else ([], None)
