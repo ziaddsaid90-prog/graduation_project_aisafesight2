@@ -20,3 +20,8 @@ __pycache__/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# API database (local data, never commit)
+api/*.db
+api/seed_users.json
+api/snapshots/

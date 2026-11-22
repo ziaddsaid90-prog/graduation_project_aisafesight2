@@ -1,0 +1,6 @@
+[
+  { "email": "ziad@safesight.test", "password": "ziad2026", "name": "Ziad", "role": "project_manager" },
+  { "email": "hse@safesight.test", "password": "Hse#2026", "name": "Mona HSE", "role": "hse" },
+  { "email": "supervisor@safesight.test", "password": "george2026", "name": "George", "role": "site_engineer" },
+  { "email": "hr@safesight.test", "password": "Hr#2026", "name": "Omar HR", "role": "hr_manager" }
+]

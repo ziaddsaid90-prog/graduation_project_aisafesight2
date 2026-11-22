@@ -1,0 +1,9 @@
+# Install torch first (see src/training/README.md), then: pip install -r api/requirements.txt
+ultralytics>=8.3.0
+pillow
+fastapi
+uvicorn
+python-multipart
+bcrypt
+fpdf2
+uharfbuzz
