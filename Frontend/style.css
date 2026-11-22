@@ -1,0 +1,269 @@
+:root {
+  --navy: #0f172a;
+  --orange: #f59e0b;
+  --bg: #f1f5f9;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --danger: #dc2626;
+  --warn: #d97706;
+  --ok: #16a34a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--navy);
+}
+
+.lang-btn {
+  background: transparent;
+  border: 1px solid var(--orange);
+  color: var(--orange);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* ---------- صفحة الدخول ---------- */
+.login-page { min-height: 100vh; display: flex; background: var(--navy); }
+
+.login-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 32px;
+  color: white;
+  text-align: center;
+}
+/* اللوجو: رسمة SVG + اسم مكتوب كنص (مش صورة)، فبيبان على أي خلفية */
+.logo-block { display: flex; flex-direction: column; align-items: center; }
+.logo-block img { width: 180px; }
+.wordmark {
+  direction: ltr;
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin-top: 8px;
+}
+.wordmark span { color: var(--orange); }
+.tagline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  color: #cbd5e1;
+  font-size: 16px;
+}
+/* المسافات بين الحروف بتقطّع الحروف العربي، فبنستخدمها في الإنجليزي بس */
+html[lang="en"] .tagline { font-size: 14px; letter-spacing: 4px; text-transform: uppercase; }
+.tagline::before, .tagline::after {
+  content: "";
+  width: 32px;
+  height: 2px;
+  background: var(--orange);
+}
+
+.login-form-wrap {
+  flex: 1;
+  background: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 32px;
+  position: relative;
+}
+.login-form-wrap .lang-btn {
+  position: absolute;
+  top: 16px;
+  inset-inline-end: 16px;
+  color: var(--navy);
+  border-color: var(--border);
+}
+
+.login-box { width: 100%; max-width: 340px; }
+.login-box h2 { margin-top: 0; }
+.login-box label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.muted { color: var(--muted); margin-top: -8px; }
+
+.password-field { position: relative; }
+.password-field input { padding-inline-end: 64px; }
+.login-box .show-btn {
+  position: absolute;
+  top: 7px;
+  inset-inline-end: 6px;
+  width: auto;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.login-box .show-btn:hover { background: var(--bg); }
+
+.form-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+.login-box a { color: #b45309; text-decoration: none; }
+.login-box a:hover { text-decoration: underline; }
+.login-box button:disabled { opacity: 0.6; cursor: wait; }
+
+.form-success {
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 8px;
+  padding: 12px;
+}
+.back-link { display: inline-block; margin-top: 8px; font-size: 14px; }
+.demo-hint {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.login-box input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+.login-box input:focus { outline: 2px solid var(--orange); border-color: transparent; }
+
+.login-box button {
+  width: 100%;
+  padding: 12px;
+  background: var(--orange);
+  color: var(--navy);
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.login-box button:hover { background: #d98a06; }
+#message { color: var(--danger); min-height: 20px; }
+
+/* على الموبايل: نخفي النص الكحلي ونحط اللوجو فوق الفورم */
+.mobile-brand { display: none; margin-bottom: 24px; }
+.mobile-brand img { width: 110px; }
+.mobile-brand .wordmark { font-size: 34px; color: var(--navy); }
+
+@media (max-width: 800px) {
+  .login-side { display: none; }
+  .mobile-brand { display: flex; }
+}
+
+/* ---------- الداشبورد ---------- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 32px;
+  background: var(--navy);
+  color: white;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; direction: ltr; }
+.brand img { height: 40px; }
+.brand span { color: var(--orange); }
+.topbar-actions { display: flex; align-items: center; gap: 16px; }
+.user-info { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.role-badge {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--orange);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.logout-btn {
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 14px;
+}
+.logout-btn:hover { text-decoration: underline; }
+[hidden] { display: none !important; }
+
+.container { padding: 32px; }
+
+.cards { display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
+.card {
+  flex: 1;
+  min-width: 180px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  text-align: center;
+  border-top: 4px solid var(--orange);
+}
+.card h3 { margin: 0; color: var(--muted); font-size: 15px; }
+.number { margin: 8px 0 0; font-size: 32px; font-weight: bold; }
+
+.camera, .alerts {
+  padding: 20px;
+  margin-bottom: 32px;
+  background: white;
+  border-radius: 12px;
+}
+.camera input { margin-bottom: 16px; }
+
+#preview { width: 100%; max-width: 640px; border-radius: 8px; display: block; }
+#preview[hidden] { display: none; }
+.notice {
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-top: 0;
+}
+.empty { color: var(--muted); text-align: center; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 12px; text-align: start; border-bottom: 1px solid var(--border); }
+.high { color: var(--danger); font-weight: bold; }
+.medium { color: var(--warn); font-weight: bold; }
+.low { color: var(--ok); font-weight: bold; }
+
+@media (max-width: 600px) {
+  .topbar { padding: 12px 16px; }
+  .container { padding: 16px; }
+  .alerts { overflow-x: auto; }
+  .user-info #userName { display: none; }
+  .topbar-actions { gap: 10px; }
+}
+
+/* ---------- تقارير المخالفات ---------- */
+.muted-text { color: var(--muted); font-size: 14px; margin-top: -6px; }
+.pdf-btn {
+  background: var(--navy);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pdf-btn:hover { background: #1e293b; }
+.pdf-btn:disabled { opacity: 0.6; cursor: wait; }
+
+/* ---------- تقرير Power BI ---------- */
+.section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.bi-frame {
+  width: 100%;
+  height: 75vh;
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}

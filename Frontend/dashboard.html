@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI SafeSight</title>
+    <link rel="icon" href="logo.svg" />
+    <link rel="stylesheet" href="style.css" />
+    <!-- قبل ما الصفحة تظهر: لو مش مسجل دخول، ارجع لصفحة الدخول -->
+    <script src="auth.js"></script>
+    <script>
+      if (!getSession()) window.location.replace("index.html");
+      protectFromBackButton();
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="logo-dark-bg.svg" alt="" />
+        <div><span>AI</span> SafeSight</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-info">
+          <span id="userName"></span>
+          <span id="userRole" class="role-badge"></span>
+        </div>
+        <button
+          class="lang-btn"
+          onclick="toggleLang()"
+          data-i18n="langBtn"
+        ></button>
+        <button
+          class="logout-btn"
+          onclick="logout()"
+          data-i18n="logout"
+        ></button>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="cards" data-permission="view_stats">
+        <div class="card">
+          <h3 data-i18n="cameras"></h3>
+          <p class="number" id="statCameras">-</p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="violationsToday"></h3>
+          <p class="number" id="statViolations">-</p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="compliance"></h3>
+          <p class="number" id="statCompliance">-</p>
+        </div>
+      </section>
+
+      <section class="camera" data-permission="check_image">
+        <h2 data-i18n="checkImage"></h2>
+        <p id="modelNotice" class="notice" hidden></p>
+        <input type="file" id="imageInput" accept="image/*" />
+        <!-- الصورة بتترسم هنا ومعاها مربعات الكشف -->
+        <canvas id="preview" hidden></canvas>
+        <p id="status"></p>
+      </section>
+
+      <section class="alerts" data-permission="view_alerts">
+        <h2 data-i18n="recentAlerts"></h2>
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="time"></th>
+              <th data-i18n="camera"></th>
+              <th data-i18n="violation"></th>
+              <th data-i18n="severity"></th>
+            </tr>
+          </thead>
+          <tbody id="alertsBody"></tbody>
+        </table>
+      </section>
+
+      <!-- تقرير Power BI (متصدّر PDF) لـ Project Manager و HSE -->
+      <section class="alerts" data-permission="view_reports">
+        <div class="section-head">
+          <h2 data-i18n="biReport"></h2>
+          <button id="biOpen" class="pdf-btn" data-i18n="openFullScreen" hidden></button>
+        </div>
+        <p id="biMessage" class="muted-text"></p>
+        <iframe id="biFrame" class="bi-frame" title="Power BI report" hidden></iframe>
+      </section>
+
+      <!-- تقرير PDF لكل مخالفة (Project Manager و HSE) -->
+      <section class="alerts" data-permission="view_reports">
+        <h2 data-i18n="reports"></h2>
+        <p class="muted-text" data-i18n="reportsIntro"></p>
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="reportNo"></th>
+              <th data-i18n="dateTime"></th>
+              <th data-i18n="camera"></th>
+              <th data-i18n="violation"></th>
+              <th data-i18n="severity"></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="reportsBody"></tbody>
+        </table>
+      </section>
+
+      <section class="alerts" data-permission="view_users">
+        <h2 data-i18n="users"></h2>
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="name"></th>
+              <th data-i18n="email"></th>
+              <th data-i18n="role"></th>
+            </tr>
+          </thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script src="i18n.js"></script>
+    <script src="api.js"></script>
+    <script>
+      // بيخفي الأقسام اللي مش من صلاحيتك (الجدول في auth.js: ROLE_PERMISSIONS)
+      const session = requireAuth();
+
+      function renderUser() {
+        if (!session) return;
+        document.getElementById("userName").textContent = session.user.name;
+        document.getElementById("userRole").textContent = t(
+          "role_" + session.user.role,
+        );
+      }
+
+      async function renderUsers() {
+        if (!hasPermission("view_users")) return;
+        const users = await getUsers();
+        const body = document.getElementById("usersBody");
+        body.innerHTML = "";
+        users.forEach(function (u) {
+          const row = document.createElement("tr");
+          row.innerHTML = `<td>${u.name}</td><td>${u.email}</td><td>${t("role_" + u.role)}</td>`;
+          body.appendChild(row);
+        });
+      }
+
+      // التاريخ والوقت بلغة المستخدم (المتصفح بيكتبهم لوحده بالعربي أو الإنجليزي)
+      function formatDateTime(date, time) {
+        const d = new Date(date + "T" + time);
+        const locale = currentLang === "ar" ? "ar-EG-u-nu-latn" : "en-GB";
+        return d.toLocaleString(locale, {
+          weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
+        });
+      }
+
+      async function renderReports() {
+        if (!hasPermission("view_reports")) return;
+        const body = document.getElementById("reportsBody");
+        try {
+          const incidents = await getIncidents();
+          body.innerHTML = "";
+          if (incidents.length === 0) {
+            body.innerHTML = `<tr><td colspan="6" class="empty">${t("noReports")}</td></tr>`;
+            return;
+          }
+          incidents.forEach(function (inc) {
+            const types = Object.keys(inc.types).map(function (k) {
+              return t(k) + (inc.types[k] > 1 ? " ×" + inc.types[k] : "");
+            }).join("، ");
+            const row = document.createElement("tr");
+            row.innerHTML =
+              `<td>#${inc.id}</td>` +
+              `<td>${formatDateTime(inc.date, inc.time)}</td>` +
+              `<td>${t("camera")} ${inc.camera}</td>` +
+              `<td>${types}</td>` +
+              `<td class="${inc.severity}">${t(inc.severity)}</td>` +
+              `<td><button class="pdf-btn" data-id="${inc.id}">${t("downloadPdf")}</button></td>`;
+            body.appendChild(row);
+          });
+        } catch (e) {
+          if (e.status === 401) return logout();
+          body.innerHTML = `<tr><td colspan="6" class="empty">${t("apiError")}</td></tr>`;
+        }
+      }
+
+      // تقرير Power BI: بيتحمّل مرة واحدة لما الصفحة تفتح
+      let biUrl = null;
+      async function loadBiReport() {
+        if (!hasPermission("view_reports")) return;
+        const msg = document.getElementById("biMessage");
+        msg.textContent = t("loading");
+        try {
+          biUrl = await getBiReportUrl();
+          if (!biUrl) {
+            msg.textContent = t("biNotExported");
+            return;
+          }
+          const frame = document.getElementById("biFrame");
+          // من غير شريط الصفحات الصغيرة، وعرض الصفحة على قد العرض
+          frame.src = biUrl + "#navpanes=0&view=FitH";
+          frame.hidden = false;
+          document.getElementById("biOpen").hidden = false;
+          msg.textContent = "";
+        } catch (e) {
+          if (e.status === 401) return logout();
+          msg.textContent = t("apiError");
+        }
+      }
+      document.getElementById("biOpen").addEventListener("click", function () {
+        if (biUrl) window.open(biUrl, "_blank");
+      });
+
+      // زرار PDF: بيفتح التقرير بلغة الموقع الحالية
+      document.getElementById("reportsBody").addEventListener("click", async function (e) {
+        const btn = e.target.closest(".pdf-btn");
+        if (!btn) return;
+        btn.disabled = true;
+        try {
+          await openIncidentReport(btn.dataset.id, currentLang);
+        } catch (err) {
+          if (err.status === 401) return logout();
+          alert(t("apiError"));
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      const input = document.getElementById("imageInput");
+      const preview = document.getElementById("preview");
+      const status = document.getElementById("status");
+      const tbody = document.getElementById("alertsBody");
+      const modelNotice = document.getElementById("modelNotice");
+
+      let lastResult = null; // آخر نتيجة فحص، عشان نعيد كتابتها لما اللغة تتغير
+
+      // ألوان المربعات: أحمر للمخالفة، أخضر للمعدات اللي لابسها، برتقالي لأي حاجة تانية
+      const OK_CLASSES = ["helmet", "vest", "chain_closed"];
+      function boxColor(label) {
+        if (VIOLATION_CLASSES.includes(label)) return "#dc2626";
+        if (OK_CLASSES.includes(label)) return "#16a34a";
+        return "#f59e0b";
+      }
+
+      // بيرسم الصورة على الـ canvas وفوقها مربع واسم لكل حاجة اتكشفت
+      function drawResult(img, detections) {
+        preview.width = img.naturalWidth;
+        preview.height = img.naturalHeight;
+        const ctx = preview.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+
+        const line = Math.max(2, Math.round(img.naturalWidth / 300));
+        const fontSize = Math.max(14, Math.round(img.naturalWidth / 45));
+        ctx.lineWidth = line;
+        ctx.font = "bold " + fontSize + "px Segoe UI, Tahoma, Arial";
+        ctx.textBaseline = "top";
+        // الـ canvas بياخد اتجاه الصفحة (يمين لشمال بالعربي)، فبنثبّت إن النص يبدأ من شمال المربع
+        ctx.textAlign = "left";
+        ctx.direction = currentLang === "ar" ? "rtl" : "ltr";
+
+        detections.forEach(function (d) {
+          if (!d.box) return;
+          const [x1, y1, x2, y2] = d.box;
+          const color = boxColor(d.label);
+          ctx.strokeStyle = color;
+          ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+          const text = t(d.label) + " " + Math.round(d.confidence * 100) + "%";
+          const w = ctx.measureText(text).width + 8;
+          const y = y1 - fontSize - 6 >= 0 ? y1 - fontSize - 6 : y1;
+          ctx.fillStyle = color;
+          ctx.fillRect(x1, y, w, fontSize + 6);
+          ctx.fillStyle = "white";
+          ctx.fillText(text, x1 + 4, y + 3);
+        });
+        preview.hidden = false;
+      }
+
+      function showResultText() {
+        if (!lastResult) return;
+        const violations = lastResult.detections.filter(function (d) {
+          return VIOLATION_CLASSES.includes(d.label);
+        });
+        status.textContent =
+          t("detected") +
+          violations.length +
+          (violations.length
+            ? " (" +
+              violations
+                .map(function (d) {
+                  return t(d.label);
+                })
+                .join("، ") +
+              ")"
+            : "");
+      }
+
+      // بيجيب الإحصائيات والتنبيهات من api.js ويعرضهم
+      async function renderAll() {
+        try {
+          // كل جزء بيتجاب بس لو عندك صلاحيته
+          if (hasPermission("view_stats")) {
+            const stats = await getStats();
+            document.getElementById("statCameras").textContent = stats.cameras;
+            document.getElementById("statViolations").textContent =
+              stats.violationsToday;
+            document.getElementById("statCompliance").textContent =
+              stats.compliance + "%";
+          }
+
+          if (!hasPermission("view_alerts")) return;
+          const alerts = await getAlerts();
+          tbody.innerHTML = "";
+          if (alerts.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="empty">${t("noAlerts")}</td></tr>`;
+          }
+          alerts.forEach(function (a) {
+            const row = document.createElement("tr");
+            row.innerHTML =
+              `<td>${a.time}</td>` +
+              `<td>${t("camera")} ${a.camera}</td>` +
+              `<td>${t(a.violation)}</td>` +
+              `<td class="${a.level}">${t(a.level)}</td>`;
+            tbody.appendChild(row);
+          });
+        } catch (e) {
+          if (e.status === 401) return logout(); // التوكن انتهى أو مش صحيح
+          status.textContent = t("apiError");
+        }
+      }
+
+      // لما المستخدم يختار صورة: نعرضها ونبعتها للفحص
+      let loadedImg = null;
+
+      input.addEventListener("change", async function () {
+        const file = input.files[0];
+        if (!file) return;
+
+        // نحمّل الصورة الأول ونعرضها من غير مربعات
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        await img.decode();
+        loadedImg = img;
+        lastResult = null;
+        drawResult(img, []);
+
+        status.textContent = t("analyzing");
+        try {
+          lastResult = await detectImage(file);
+          drawResult(img, lastResult.detections);
+          showResultText();
+          renderAll(); // الجدول والكروت يتحدثوا بالمخالفات الجديدة
+          renderReports(); // لو فيه مخالفة، اتعملها تقرير جديد
+        } catch (e) {
+          status.textContent = t("apiError");
+        }
+      });
+
+      // لو النموذج اللي شغال مش المدرّب على معدات السلامة، نعرض تنبيه
+      async function checkModel() {
+        try {
+          const health = await getHealth();
+          modelNotice.hidden = health.ppe_model;
+          modelNotice.textContent =
+            t("demoModel") + " (" + health.weights + ")";
+        } catch (e) {
+          modelNotice.hidden = true;
+        }
+      }
+
+      status.textContent = t("chooseImage");
+      document.addEventListener("langchange", function () {
+        if (lastResult && loadedImg) {
+          drawResult(loadedImg, lastResult.detections);
+          showResultText();
+        } else if (!input.files[0]) {
+          status.textContent = t("chooseImage");
+        }
+        if (hasPermission("check_image")) checkModel();
+        renderUser();
+        renderUsers();
+        renderReports();
+        renderAll();
+      });
+      if (hasPermission("check_image")) checkModel();
+      renderUser();
+      renderUsers();
+      renderReports();
+      renderAll();
+      loadBiReport();
+      // التقارير الجديدة (من الكاميرا أو من حد تاني) تظهر لوحدها كل 30 ثانية
+      setInterval(function () {
+        renderReports();
+        renderAll();
+      }, 30000);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI SafeSight</title>
+    <link rel="icon" href="logo.svg" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="login-page">
+    <div class="login-side">
+      <div class="logo-block">
+        <img src="logo-dark-bg.svg" alt="" />
+        <div class="wordmark"><span>AI</span> SafeSight</div>
+        <div class="tagline" data-i18n="tagline"></div>
+      </div>
+    </div>
+
+    <div class="login-form-wrap">
+      <button
+        class="lang-btn"
+        onclick="toggleLang()"
+        data-i18n="langBtn"
+      ></button>
+
+      <form class="login-box" id="loginForm" novalidate>
+        <div class="mobile-brand logo-block">
+          <img src="logo.svg" alt="" />
+          <div class="wordmark"><span>AI</span> SafeSight</div>
+        </div>
+        <h2 data-i18n="loginTitle"></h2>
+
+        <label for="email" data-i18n="email"></label>
+        <input
+          type="email"
+          id="email"
+          autocomplete="username"
+          data-i18n-placeholder="emailPlaceholder"
+        />
+
+        <label for="password" data-i18n="password"></label>
+        <div class="password-field">
+          <input
+            type="password"
+            id="password"
+            autocomplete="current-password"
+          />
+          <button
+            type="button"
+            id="togglePassword"
+            class="show-btn"
+            data-i18n="show"
+          ></button>
+        </div>
+
+        <div class="form-row">
+          <a href="forgot-password.html" data-i18n="forgotPassword"></a>
+        </div>
+
+        <button
+          type="submit"
+          id="loginBtn"
+          class="primary-btn"
+          data-i18n="login"
+        ></button>
+        <p id="message" class="form-message" role="alert"></p>
+
+        <!-- بيظهر في الوضع الوهمي بس، عشان تعرف تجرّب -->
+        <p class="demo-hint" id="demoHint" hidden></p>
+      </form>
+    </div>
+
+    <script src="i18n.js"></script>
+    <script src="auth.js"></script>
+    <script src="api.js"></script>
+    <script>
+      // لو مسجل دخول خلاص، ادخل على الداشبورد على طول
+      if (getSession()) window.location.replace("dashboard.html");
+
+      const form = document.getElementById("loginForm");
+      const emailInput = document.getElementById("email");
+      const passwordInput = document.getElementById("password");
+      const message = document.getElementById("message");
+      const loginBtn = document.getElementById("loginBtn");
+      const toggleBtn = document.getElementById("togglePassword");
+      let lastError = ""; // مفتاح آخر رسالة خطأ، عشان تتترجم لو اللغة اتغيرت
+
+      function showError(key) {
+        lastError = key;
+        message.textContent = key ? t(key) : "";
+      }
+
+      // زرار إظهار / إخفاء الباسورد
+      toggleBtn.addEventListener("click", function () {
+        const hidden = passwordInput.type === "password";
+        passwordInput.type = hidden ? "text" : "password";
+        toggleBtn.textContent = t(hidden ? "hide" : "show");
+      });
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault(); // نمنع الفورم إنه يعمل reload للصفحة
+
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+
+        if (email === "") return showError("emailRequired");
+        if (!emailInput.checkValidity()) return showError("emailInvalid");
+        if (password === "") return showError("passwordRequired");
+
+        showError("");
+        loginBtn.disabled = true;
+        loginBtn.textContent = t("signingIn");
+        try {
+          const session = await login(email, password);
+          saveSession(session);
+          window.location.replace("dashboard.html");
+        } catch (err) {
+          showError(
+            err.code === "invalidCredentials"
+              ? "invalidCredentials"
+              : "apiError",
+          );
+          passwordInput.value = "";
+          passwordInput.focus();
+        } finally {
+          loginBtn.disabled = false;
+          loginBtn.textContent = t("login");
+        }
+      });
+
+      function refreshTexts() {
+        if (lastError) message.textContent = t(lastError);
+        toggleBtn.textContent = t(
+          passwordInput.type === "password" ? "show" : "hide",
+        );
+        const hint = document.getElementById("demoHint");
+        hint.hidden = !USE_MOCK;
+        hint.textContent = t("demoHint");
+      }
+      document.addEventListener("langchange", refreshTexts);
+      refreshTexts();
+    </script>
+  </body>
+</html>
