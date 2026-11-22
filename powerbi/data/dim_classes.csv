@@ -1,0 +1,7 @@
+﻿class_id,class_name,category,helmet_color,color_hex
+0,person,Person,,#7F7F7F
+1,vest,Vest,,#FF8C00
+2,blue helmet,Helmet,Blue,#1F77B4
+3,red helmet,Helmet,Red,#D62728
+4,white helmet,Helmet,White,#D9D9D9
+5,yellow helmet,Helmet,Yellow,#FFD700
