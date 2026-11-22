@@ -1,86 +1,8 @@
 // الترجمة عربي / إنجليزي
+// الكلام بيتكتب بالإنجليزي بس هنا. العربي بيترجمه نموذج ترجمة (MarianMT) شغال في الـ API (POST /translate)،
+// والترجمات الغلط بتتصلح في api/translation_fixes.json.
 // أي عنصر في الصفحة عليه data-i18n="key" بيتكتب فيه النص بتاع المفتاح ده.
-// أسماء الكلاسات (no_helmet, vest, ...) نفس الأسماء اللي في prepared/titan_v1/data.yaml
 const translations = {
-  ar: {
-    langBtn: "English",
-    tagline: "اكتشف المخاطر. اضمن السلامة.",
-    loginTitle: "سجّل دخولك للمتابعة",
-    email: "الإيميل",
-    emailPlaceholder: "name@company.com",
-    password: "الباسورد",
-    login: "تسجيل الدخول",
-    signingIn: "جاري تسجيل الدخول...",
-    emailRequired: "اكتب الإيميل الأول",
-    emailInvalid: "الإيميل مكتوب غلط",
-    passwordRequired: "اكتب الباسورد",
-    invalidCredentials: "الإيميل أو الباسورد غلط",
-    show: "إظهار",
-    hide: "إخفاء",
-    forgotPassword: "نسيت الباسورد؟",
-    demoHint: "وضع تجربة: حسابات التجربة موجودة في MOCK_USERS في ملف api.js",
-    resetTitle: "استرجاع الباسورد",
-    resetIntro: "اكتب إيميلك وهنبعتلك لينك تعمل بيه باسورد جديد.",
-    sendResetLink: "ابعت اللينك",
-    sending: "جاري الإرسال...",
-    resetSent: "لو الإيميل ده عليه حساب، هيوصلك لينك استرجاع الباسورد خلال دقايق.",
-    backToLogin: "رجوع لتسجيل الدخول",
-    newPasswordTitle: "اعمل باسورد جديد",
-    newPassword: "الباسورد الجديد",
-    confirmPassword: "اكتب الباسورد تاني",
-    savePassword: "احفظ الباسورد",
-    passwordChanged: "الباسورد اتغيّر. سجّل دخول بالباسورد الجديد.",
-    passwordTooShort: "الباسورد لازم يبقى 8 حروف على الأقل",
-    passwordsDontMatch: "الباسوردين مش زي بعض",
-    resetLinkInvalid: "اللينك ده مش صالح أو انتهى. اطلب لينك جديد.",
-    users: "المستخدمين",
-    reports: "تقارير المخالفات",
-    biReport: "تقرير Power BI",
-    openFullScreen: "فتح بملء الشاشة",
-    loading: "جاري التحميل...",
-    biNotExported: "لسه مفيش تقرير. صدّر التقرير من Power BI (File ← Export ← Export to PDF) واحفظه في powerbi/AI_SafeSight_CHV.pdf",
-    reportsIntro: "بيتعمل تقرير تلقائي لكل صورة فيها مخالفة. اضغط PDF عشان تفتحه باللغة الحالية.",
-    reportNo: "رقم التقرير",
-    dateTime: "التاريخ والوقت",
-    downloadPdf: "PDF",
-    noReports: "مفيش تقارير لسه",
-    name: "الاسم",
-    role: "الصلاحية",
-    role_project_manager: "مدير المشروع",
-    role_hse: "مسؤول السلامة HSE",
-    role_site_engineer: "مهندس الموقع",
-    role_hr_manager: "مدير الموارد البشرية",
-    logout: "تسجيل الخروج",
-    cameras: "الكاميرات",
-    violationsToday: "مخالفات اليوم",
-    compliance: "نسبة الالتزام",
-    checkImage: "فحص صورة",
-    analyzing: "جاري الفحص...",
-    chooseImage: "اختار صورة عشان تتفحص",
-    detected: "عدد المخالفات المكتشفة: ",
-    apiError: "حصل خطأ في الاتصال بالسيرفر",
-    noAlerts: "مفيش تنبيهات لسه",
-    demoModel: "النموذج الشغال دلوقتي مش متدرب على معدات السلامة، فمش هيكشف مخالفات لحد ما يتدرب",
-    recentAlerts: "آخر التنبيهات",
-    time: "الوقت",
-    camera: "كاميرا",
-    violation: "المخالفة",
-    severity: "الخطورة",
-    high: "عالية",
-    medium: "متوسطة",
-    low: "منخفضة",
-    // كلاسات النموذج
-    person: "شخص",
-    helmet: "خوذة",
-    no_helmet: "بدون خوذة",
-    vest: "جاكت",
-    no_vest: "بدون جاكت",
-    wheelbarrow: "عربية يد",
-    mixer_truck: "خلاطة",
-    vehicle_other: "مركبة",
-    chain_closed: "سلسلة مقفولة",
-    chain_open: "سلسلة مفتوحة"
-  },
   en: {
     langBtn: "العربية",
     tagline: "See risks. Ensure safety.",
@@ -162,15 +84,76 @@ const translations = {
   }
 };
 
+// حاجات مابتتترجمش (اسم اللغة التانية، أمثلة، اختصارات)
+const FIXED = {
+  ar: { langBtn: "English", emailPlaceholder: "name@company.com", downloadPdf: "PDF" },
+  en: {},
+};
+
+const I18N_DEFAULT_API = "http://127.0.0.1:8000";
+const CACHE_KEY = "i18n_cache_ar_v1"; // الترجمات اللي جت من النموذج، عشان ماتتطلبش كل مرة
+
+let arCache = {};
+try {
+  arCache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
+} catch (e) {}
+
 // اللغة المحفوظة من آخر مرة (أو عربي لو أول مرة)
 let currentLang = "ar";
 try {
   currentLang = localStorage.getItem("lang") || "ar";
 } catch (e) {}
 
-// بترجع النص بتاع المفتاح باللغة الحالية
+// بترجع النص بتاع المفتاح باللغة الحالية. لو الترجمة لسه ماوصلتش، بيرجع الإنجليزي.
 function t(key) {
-  return translations[currentLang][key] || key;
+  if (FIXED[currentLang][key] !== undefined) return FIXED[currentLang][key];
+  const english = translations.en[key];
+  if (english === undefined) return key;
+  if (currentLang === "en") return english;
+  return arCache[english] || english;
+}
+
+// بيترجم أي نصوص (مثلًا داتا جاية من قاعدة البيانات) بالنموذج
+async function translateTexts(texts, target, source) {
+  const apiUrl = typeof API_URL !== "undefined" ? API_URL : I18N_DEFAULT_API;
+  const res = await fetch(apiUrl + "/translate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texts: texts, target: target || "ar", source: source || "en" }),
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return (await res.json()).translations;
+}
+
+// بيجيب ترجمة كل الكلام الإنجليزي اللي لسه مالوش ترجمة محفوظة
+async function loadArabic() {
+  const missing = Object.keys(translations.en)
+    .filter(function (key) {
+      return FIXED.ar[key] === undefined && !arCache[translations.en[key]];
+    })
+    .map(function (key) {
+      return translations.en[key];
+    });
+  if (missing.length === 0) return false;
+  const result = await translateTexts(missing, "ar", "en");
+  missing.forEach(function (text, i) {
+    arCache[text] = result[i];
+  });
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(arCache));
+  } catch (e) {}
+  return true;
+}
+
+function applyTexts() {
+  document.querySelectorAll("[data-i18n]").forEach(function (el) {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  // بيبلّغ الصفحة إن الكلام اتغير عشان تعيد رسم الجداول
+  document.dispatchEvent(new Event("langchange"));
 }
 
 function setLang(lang) {
@@ -180,16 +163,20 @@ function setLang(lang) {
   } catch (e) {}
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  applyTexts(); // على طول بالمحفوظ (أو بالإنجليزي لو لسه مفيش ترجمة)
 
-  document.querySelectorAll("[data-i18n]").forEach(function (el) {
-    el.textContent = t(el.dataset.i18n);
-  });
-  document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
-    el.placeholder = t(el.dataset.i18nPlaceholder);
-  });
-
-  // بيبلّغ الصفحة إن اللغة اتغيرت عشان تعيد رسم الجدول
-  document.dispatchEvent(new Event("langchange"));
+  if (lang === "ar") {
+    // بعد ما باقي ملفات الصفحة تتحمّل، نجيب أي ترجمة ناقصة من النموذج
+    setTimeout(function () {
+      loadArabic()
+        .then(function (changed) {
+          if (changed && currentLang === "ar") applyTexts();
+        })
+        .catch(function () {
+          // الـ API مش شغال: الكلام اللي مالوش ترجمة محفوظة بيفضل إنجليزي
+        });
+    }, 0);
+  }
 }
 
 function toggleLang() {

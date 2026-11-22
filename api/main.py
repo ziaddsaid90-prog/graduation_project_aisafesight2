@@ -13,6 +13,7 @@ AI SafeSight API - bridges the Frontend and the YOLO model.
     GET  /incidents                      [view_reports] one row per image that had violations
     GET  /incidents/<id>/report.pdf?lang=ar|en  [view_reports] the incident report as PDF
     GET  /bi-report                      [view_reports] the Power BI report exported as PDF
+    POST /translate              translate texts en<->ar with the local MarianMT model (no login needed)
     GET  /health                 which model is loaded (no login needed)
 
 [permission] = the role must have it, see ROLE_PERMISSIONS in api/auth.py.
@@ -37,6 +38,7 @@ from ultralytics import YOLO
 
 from api.auth import Auth, user_payload
 from api.reports import Reports
+from api.translator import Translator
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("SAFESIGHT_DB", ROOT / "api" / "safesight.db"))
@@ -101,10 +103,31 @@ def init_db() -> None:
 init_db()
 auth = Auth(db, SEED_FILE)
 reports = Reports(db, Path(os.environ.get("SAFESIGHT_SNAPSHOTS", ROOT / "api" / "snapshots")))
+translator = Translator(db, ROOT / "api" / "translation_fixes.json")
+if os.environ.get("SAFESIGHT_TRANSLATE", "1") != "0":
+    translator.preload()
 
 app = FastAPI(title="AI SafeSight API")
 # The Frontend runs on Live Server (another port), so the browser needs CORS to call us.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+class TranslateBody(BaseModel):
+    texts: list[str]
+    target: str = "ar"
+    source: str = "en"
+
+
+@app.post("/translate")
+def translate(body: TranslateBody):
+    """No login needed: the sign-in page is translated too. Only en<->ar."""
+    from api.translator import MAX_CHARS, MAX_TEXTS
+    if len(body.texts) > MAX_TEXTS or any(len(t) > MAX_CHARS for t in body.texts):
+        raise HTTPException(status_code=413, detail=f"At most {MAX_TEXTS} texts of {MAX_CHARS} characters")
+    try:
+        return {"translations": translator.translate(body.texts, body.source, body.target)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 class LoginBody(BaseModel):

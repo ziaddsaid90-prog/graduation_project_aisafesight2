@@ -45,3 +45,11 @@ Violations and severity: `no_helmet` high, `chain_open` high, `no_vest` medium. 
 Every `/detect` call that finds a violation stores an incident and a snapshot with the boxes drawn (`api/snapshots/<id>.jpg`, not committed). The PDF is built when someone opens it, in the language they ask for: the sentences are fixed templates per language in `api/reports.py` (`TEXT`), only numbers, dates, camera and violation types change. Only `project_manager` and `hse` have `view_reports`.
 
 Arabic needs a font with Arabic letters; by default `C:\Windows\Fontsrial.ttf` / `arialbd.ttf`. On another machine set `SAFESIGHT_FONT_DIR`, `SAFESIGHT_FONT` and `SAFESIGHT_FONT_BOLD`.
+
+## Translation (Arabic <-> English)
+The site texts are written in English only (`Frontend/i18n.js`). Arabic comes from local MarianMT models (`Helsinki-NLP/opus-mt-en-ar` and `opus-mt-ar-en`) through `POST /translate` (`{texts, source, target}`, no login needed, en<->ar only). The models download once into the Hugging Face cache (~600 MB) and then run offline, on the GPU if there is one.
+
+- Every translation is stored in the `translations` table, so a text is translated only once; the browser also keeps them in localStorage.
+- Wrong translations are corrected in `api/translation_fixes.json` (exact English text -> correct Arabic). A fix always wins over the model; restart the API after editing. If a correction does not show in the browser, clear the site's localStorage (key `i18n_cache_ar_v1`).
+- If the API is down, texts without a stored translation show in English.
+- Set `SAFESIGHT_TRANSLATE=0` to skip loading the models at start-up (they then load on the first request).

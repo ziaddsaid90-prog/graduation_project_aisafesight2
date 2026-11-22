@@ -7,3 +7,6 @@ python-multipart
 bcrypt
 fpdf2
 uharfbuzz
+transformers
+sentencepiece
+sacremoses
