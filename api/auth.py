@@ -76,21 +76,50 @@ class Auth:
         self.connect = connect
         with self.connect() as conn:
             conn.executescript(SCHEMA)
-            if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0 and seed_file.exists():
-                self._seed(conn, seed_file)
+            if seed_file.exists():
+                self._sync_users(conn, seed_file)
 
-    def _seed(self, conn: sqlite3.Connection, seed_file: Path) -> None:
-        """First start only: create the accounts listed in the seed file."""
+    def _sync_users(self, conn: sqlite3.Connection, seed_file: Path) -> None:
+        """Every start: make the users table match the seed file.
+
+        The seed file is the list of accounts. New emails are added, changed names, roles and
+        passwords are applied, and accounts that were removed from the file are deleted
+        (their sessions go with them).
+        """
         users = json.loads(seed_file.read_text(encoding="utf-8"))
+        wanted = {}
         for u in users:
             if u["role"] not in ROLE_PERMISSIONS:
                 raise ValueError(f"{seed_file.name}: unknown role {u['role']!r} for {u['email']}")
-            conn.execute(
-                "INSERT INTO users (email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-                (u["email"].strip().lower(), u["name"], u["role"], hash_password(u["password"]),
-                 now().isoformat(timespec="seconds")),
-            )
-        print(f"Created {len(users)} users from {seed_file.name}")
+            wanted[u["email"].strip().lower()] = u
+
+        existing = {r["email"]: r for r in conn.execute("SELECT * FROM users")}
+        added = updated = removed = 0
+        for email, u in wanted.items():
+            row = existing.get(email)
+            if row is None:
+                conn.execute(
+                    "INSERT INTO users (email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (email, u["name"], u["role"], hash_password(u["password"]), now().isoformat(timespec="seconds")),
+                )
+                added += 1
+                continue
+            same_password = check_password(u["password"], row["password_hash"])
+            if row["name"] != u["name"] or row["role"] != u["role"] or not same_password:
+                conn.execute("UPDATE users SET name = ?, role = ?, password_hash = ? WHERE id = ?",
+                             (u["name"], u["role"],
+                              row["password_hash"] if same_password else hash_password(u["password"]), row["id"]))
+                if not same_password or row["role"] != u["role"]:
+                    conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))  # sign in again
+                updated += 1
+        for email, row in existing.items():
+            if email not in wanted:
+                conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+                conn.execute("DELETE FROM password_resets WHERE user_id = ?", (row["id"],))
+                conn.execute("DELETE FROM users WHERE id = ?", (row["id"],))
+                removed += 1
+        if added or updated or removed:
+            print(f"Users synced from {seed_file.name}: {added} added, {updated} updated, {removed} removed")
 
     # ---------- login / logout ----------
     def login(self, email: str, password: str) -> dict:

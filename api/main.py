@@ -40,7 +40,7 @@ from api.reports import Reports
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("SAFESIGHT_DB", ROOT / "api" / "safesight.db"))
-# Accounts created on the very first start. seed_users.json (not committed) wins over the example.
+# The account list, synced into the database on every start. seed_users.json (not committed) wins over the example.
 SEED_FILE = ROOT / "api" / "seed_users.json"
 if not SEED_FILE.exists():
     SEED_FILE = ROOT / "api" / "seed_users.example.json"

@@ -17,7 +17,7 @@ Then open `Frontend/index.html` with Live Server. Manual testing: http://127.0.0
 3. otherwise the stock `yolo11s.pt` - it only knows COCO classes (person, car...), so it never reports PPE violations; the dashboard shows a notice while this is the case
 
 ## Accounts and permissions
-On the first start the API creates the accounts from `api/seed_users.json` if it exists, otherwise from `api/seed_users.example.json` (test accounts). Passwords are stored as bcrypt hashes in `api/safesight.db`. To start over, stop the server and delete `api/safesight.db`.
+The account list is `api/seed_users.json` if it exists, otherwise `api/seed_users.example.json` (test accounts). Every time the API starts it syncs the database with that file: new accounts are added, changed names/roles/passwords are applied, and accounts removed from the file are deleted. So to add, remove or change an account, edit the file and restart the API. Passwords are stored only as bcrypt hashes in `api/safesight.db`.
 
 Every endpoint except `/health` and `/auth/*` needs `Authorization: Bearer <token>` from `/auth/login`. Sessions expire after 30 minutes without requests. What each role may do is `ROLE_PERMISSIONS` in `api/auth.py` (keep `Frontend/auth.js` in sync for mock mode).
 

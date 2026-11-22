@@ -43,9 +43,9 @@ const MOCK_USERS = [
     role: "project_manager",
   },
   {
-    email: "hse@safesight.test",
-    password: "Hse#2026",
-    name: "Mona HSE",
+    email: "anna@safesight.test",
+    password: "anna2026",
+    name: "Anna HSE",
     role: "hse",
   },
   {
@@ -56,7 +56,7 @@ const MOCK_USERS = [
   },
   {
     email: "hr@safesight.test",
-    password: "Hr#2026",
+    password: "omar2026",
     name: "Omar HR",
     role: "hr_manager",
   },
