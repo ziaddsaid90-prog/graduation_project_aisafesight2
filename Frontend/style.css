@@ -27,7 +27,6 @@ body {
   cursor: pointer;
 }
 
-/* ---------- صفحة الدخول ---------- */
 .login-page { min-height: 100vh; display: flex; background: var(--navy); }
 
 .login-side {
@@ -40,7 +39,6 @@ body {
   color: white;
   text-align: center;
 }
-/* اللوجو: رسمة SVG + اسم مكتوب كنص (مش صورة)، فبيبان على أي خلفية */
 .logo-block { display: flex; flex-direction: column; align-items: center; }
 .logo-block img { width: 180px; }
 .wordmark {
@@ -59,7 +57,6 @@ body {
   color: #cbd5e1;
   font-size: 16px;
 }
-/* المسافات بين الحروف بتقطّع الحروف العربي، فبنستخدمها في الإنجليزي بس */
 html[lang="en"] .tagline { font-size: 14px; letter-spacing: 4px; text-transform: uppercase; }
 .tagline::before, .tagline::after {
   content: "";
@@ -154,7 +151,6 @@ html[lang="en"] .tagline { font-size: 14px; letter-spacing: 4px; text-transform:
 .login-box button:hover { background: #d98a06; }
 #message { color: var(--danger); min-height: 20px; }
 
-/* على الموبايل: نخفي النص الكحلي ونحط اللوجو فوق الفورم */
 .mobile-brand { display: none; margin-bottom: 24px; }
 .mobile-brand img { width: 110px; }
 .mobile-brand .wordmark { font-size: 34px; color: var(--navy); }
@@ -164,7 +160,6 @@ html[lang="en"] .tagline { font-size: 14px; letter-spacing: 4px; text-transform:
   .mobile-brand { display: flex; }
 }
 
-/* ---------- الداشبورد ---------- */
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -244,7 +239,6 @@ th, td { padding: 12px; text-align: start; border-bottom: 1px solid var(--border
   .topbar-actions { gap: 10px; }
 }
 
-/* ---------- تقارير المخالفات ---------- */
 .muted-text { color: var(--muted); font-size: 14px; margin-top: -6px; }
 .pdf-btn {
   background: var(--navy);
@@ -258,7 +252,6 @@ th, td { padding: 12px; text-align: start; border-bottom: 1px solid var(--border
 .pdf-btn:hover { background: #1e293b; }
 .pdf-btn:disabled { opacity: 0.6; cursor: wait; }
 
-/* ---------- تقرير Power BI ---------- */
 .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .bi-frame {
   width: 100%;

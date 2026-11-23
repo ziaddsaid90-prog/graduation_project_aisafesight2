@@ -1,7 +1,3 @@
-// الترجمة عربي / إنجليزي
-// الكلام بيتكتب بالإنجليزي بس هنا. العربي بيترجمه نموذج ترجمة (MarianMT) شغال في الـ API (POST /translate)،
-// والترجمات الغلط بتتصلح في api/translation_fixes.json.
-// أي عنصر في الصفحة عليه data-i18n="key" بيتكتب فيه النص بتاع المفتاح ده.
 const translations = {
   en: {
     langBtn: "العربية",
@@ -70,7 +66,6 @@ const translations = {
     high: "High",
     medium: "Medium",
     low: "Low",
-    // model classes
     person: "Person",
     helmet: "Helmet",
     no_helmet: "No helmet",
@@ -84,27 +79,24 @@ const translations = {
   }
 };
 
-// حاجات مابتتترجمش (اسم اللغة التانية، أمثلة، اختصارات)
 const FIXED = {
   ar: { langBtn: "English", emailPlaceholder: "name@company.com", downloadPdf: "PDF" },
   en: {},
 };
 
 const I18N_DEFAULT_API = "http://127.0.0.1:8000";
-const CACHE_KEY = "i18n_cache_ar_v1"; // الترجمات اللي جت من النموذج، عشان ماتتطلبش كل مرة
+const CACHE_KEY = "i18n_cache_ar_v1";
 
 let arCache = {};
 try {
   arCache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
 } catch (e) {}
 
-// اللغة المحفوظة من آخر مرة (أو عربي لو أول مرة)
 let currentLang = "ar";
 try {
   currentLang = localStorage.getItem("lang") || "ar";
 } catch (e) {}
 
-// بترجع النص بتاع المفتاح باللغة الحالية. لو الترجمة لسه ماوصلتش، بيرجع الإنجليزي.
 function t(key) {
   if (FIXED[currentLang][key] !== undefined) return FIXED[currentLang][key];
   const english = translations.en[key];
@@ -113,7 +105,6 @@ function t(key) {
   return arCache[english] || english;
 }
 
-// بيترجم أي نصوص (مثلًا داتا جاية من قاعدة البيانات) بالنموذج
 async function translateTexts(texts, target, source) {
   const apiUrl = typeof API_URL !== "undefined" ? API_URL : I18N_DEFAULT_API;
   const res = await fetch(apiUrl + "/translate", {
@@ -125,7 +116,6 @@ async function translateTexts(texts, target, source) {
   return (await res.json()).translations;
 }
 
-// بيجيب ترجمة كل الكلام الإنجليزي اللي لسه مالوش ترجمة محفوظة
 async function loadArabic() {
   const missing = Object.keys(translations.en)
     .filter(function (key) {
@@ -152,7 +142,6 @@ function applyTexts() {
   document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
     el.placeholder = t(el.dataset.i18nPlaceholder);
   });
-  // بيبلّغ الصفحة إن الكلام اتغير عشان تعيد رسم الجداول
   document.dispatchEvent(new Event("langchange"));
 }
 
@@ -163,17 +152,15 @@ function setLang(lang) {
   } catch (e) {}
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-  applyTexts(); // على طول بالمحفوظ (أو بالإنجليزي لو لسه مفيش ترجمة)
+  applyTexts();
 
   if (lang === "ar") {
-    // بعد ما باقي ملفات الصفحة تتحمّل، نجيب أي ترجمة ناقصة من النموذج
     setTimeout(function () {
       loadArabic()
         .then(function (changed) {
           if (changed && currentLang === "ar") applyTexts();
         })
         .catch(function () {
-          // الـ API مش شغال: الكلام اللي مالوش ترجمة محفوظة بيفضل إنجليزي
         });
     }, 0);
   }

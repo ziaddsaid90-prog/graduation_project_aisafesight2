@@ -1,12 +1,3 @@
-"""
-Users, login sessions and role permissions for the AI SafeSight API.
-
-- Passwords are stored only as bcrypt hashes.
-- A login returns a random token; the Frontend sends it back as  Authorization: Bearer <token>.
-- A token expires after IDLE_MINUTES without any request (same rule as Frontend/auth.js).
-- ROLE_PERMISSIONS is the single source of truth: /auth/login returns the user's permissions
-  and the Frontend uses them to show or hide sections.
-"""
 from __future__ import annotations
 
 import json
@@ -70,7 +61,6 @@ def user_payload(row: sqlite3.Row) -> dict:
 
 
 class Auth:
-    """Everything that needs the database. `connect` returns a new sqlite3 connection."""
 
     def __init__(self, connect: Callable[[], sqlite3.Connection], seed_file: Path):
         self.connect = connect
@@ -80,12 +70,6 @@ class Auth:
                 self._sync_users(conn, seed_file)
 
     def _sync_users(self, conn: sqlite3.Connection, seed_file: Path) -> None:
-        """Every start: make the users table match the seed file.
-
-        The seed file is the list of accounts. New emails are added, changed names, roles and
-        passwords are applied, and accounts that were removed from the file are deleted
-        (their sessions go with them).
-        """
         users = json.loads(seed_file.read_text(encoding="utf-8"))
         wanted = {}
         for u in users:
@@ -110,7 +94,7 @@ class Auth:
                              (u["name"], u["role"],
                               row["password_hash"] if same_password else hash_password(u["password"]), row["id"]))
                 if not same_password or row["role"] != u["role"]:
-                    conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))  # sign in again
+                    conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
                 updated += 1
         for email, row in existing.items():
             if email not in wanted:
@@ -121,11 +105,9 @@ class Auth:
         if added or updated or removed:
             print(f"Users synced from {seed_file.name}: {added} added, {updated} updated, {removed} removed")
 
-    # ---------- login / logout ----------
     def login(self, email: str, password: str) -> dict:
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
-            # Same error for "no such user" and "wrong password", so nobody can probe which emails exist
             if row is None or not check_password(password, row["password_hash"]):
                 raise HTTPException(status_code=401, detail="Wrong email or password")
             token = secrets.token_urlsafe(32)
@@ -152,9 +134,7 @@ class Auth:
                          (now().isoformat(timespec="seconds"), token))
         return row
 
-    # ---------- forgot password ----------
     def create_reset_token(self, email: str) -> str | None:
-        """Returns a reset token, or None when the email has no account (the caller must not reveal which)."""
         with self.connect() as conn:
             row = conn.execute("SELECT id FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
             if row is None:
@@ -172,14 +152,13 @@ class Auth:
                 raise HTTPException(status_code=400, detail="Reset link is invalid or expired")
             conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), row["user_id"]))
             conn.execute("DELETE FROM password_resets WHERE user_id = ?", (row["user_id"],))
-            conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))  # sign out everywhere
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))
 
     def list_users(self) -> list[dict]:
         with self.connect() as conn:
             rows = conn.execute("SELECT * FROM users ORDER BY id").fetchall()
         return [{"name": r["name"], "email": r["email"], "role": r["role"]} for r in rows]
 
-    # ---------- FastAPI dependencies ----------
     def current_user(self) -> Callable:
         def dependency(authorization: str = Header(default="")) -> sqlite3.Row:
             scheme, _, token = authorization.partition(" ")
@@ -189,7 +168,6 @@ class Auth:
         return dependency
 
     def require(self, permission: str) -> Callable:
-        """Use as  Depends(auth.require("view_alerts"))  on an endpoint."""
         current = self.current_user()
 
         def dependency(user: sqlite3.Row = Depends(current)) -> sqlite3.Row:

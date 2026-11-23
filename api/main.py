@@ -1,27 +1,3 @@
-"""
-AI SafeSight API - bridges the Frontend and the YOLO model.
-
-    POST /auth/login             email + password -> token + user (with permissions)
-    POST /auth/logout            ends the session
-    GET  /auth/me                who is signed in
-    POST /auth/forgot-password   prints a reset link in the server console (no email server yet)
-    POST /auth/reset-password    token + new password
-    POST /detect   [check_image] upload an image -> YOLO -> violations saved -> detections returned
-    GET  /alerts   [view_alerts] latest violations (for the alerts table)
-    GET  /stats    [view_stats]  numbers for the dashboard cards
-    GET  /users    [view_users]  list of accounts
-    GET  /incidents                      [view_reports] one row per image that had violations
-    GET  /incidents/<id>/report.pdf?lang=ar|en  [view_reports] the incident report as PDF
-    GET  /bi-report                      [view_reports] the Power BI report exported as PDF
-    POST /translate              translate texts en<->ar with the local MarianMT model (no login needed)
-    GET  /health                 which model is loaded (no login needed)
-
-[permission] = the role must have it, see ROLE_PERMISSIONS in api/auth.py.
-
-Run (from the repo root, with .venv active):
-    uvicorn api.main:app --reload
-Docs / manual testing: http://127.0.0.1:8000/docs
-"""
 from __future__ import annotations
 
 import io
@@ -42,26 +18,19 @@ from api.translator import Translator
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("SAFESIGHT_DB", ROOT / "api" / "safesight.db"))
-# The account list, synced into the database on every start. seed_users.json (not committed) wins over the example.
 SEED_FILE = ROOT / "api" / "seed_users.json"
 if not SEED_FILE.exists():
     SEED_FILE = ROOT / "api" / "seed_users.example.json"
-# Cameras installed on site (the dashboard card). Only one for now.
 CAMERAS = int(os.environ.get("SAFESIGHT_CAMERAS", 1))
-# Where the Frontend is served, used to build the password-reset link
 FRONTEND_URL = os.environ.get("SAFESIGHT_FRONTEND_URL", "http://127.0.0.1:5500/Frontend")
-# Power BI report exported as PDF (File > Export > Export to PDF), shown in the dashboard
 BI_REPORT = Path(os.environ.get("SAFESIGHT_BI_REPORT", ROOT / "powerbi" / "AI_SafeSight_CHV.pdf"))
 
-# Class names come from prepared/titan_v1/data.yaml. Only these count as violations.
 SEVERITY = {"no_helmet": "high", "chain_open": "high", "no_vest": "medium"}
-# Pairs used for the compliance rate: (wearing it, not wearing it)
 PPE_PAIRS = [("helmet", "no_helmet"), ("vest", "no_vest")]
 CONF_THRESHOLD = float(os.environ.get("SAFESIGHT_CONF", 0.4))
 
 
 def find_weights() -> Path:
-    """SAFESIGHT_WEIGHTS env var > newest trained best.pt > stock yolo11s.pt."""
     if os.environ.get("SAFESIGHT_WEIGHTS"):
         return Path(os.environ["SAFESIGHT_WEIGHTS"])
     trained = sorted((ROOT / "runs").glob("**/weights/best.pt"), key=lambda p: p.stat().st_mtime)
@@ -90,11 +59,11 @@ def init_db() -> None:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS detections (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT    NOT NULL,   -- local time, ISO format
+                created_at TEXT    NOT NULL,
                 camera     INTEGER NOT NULL,
                 label      TEXT    NOT NULL,
                 confidence REAL    NOT NULL,
-                severity   TEXT                -- NULL when it is not a violation
+                severity   TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_detections_created ON detections(created_at);
         """)
@@ -108,7 +77,6 @@ if os.environ.get("SAFESIGHT_TRANSLATE", "1") != "0":
     translator.preload()
 
 app = FastAPI(title="AI SafeSight API")
-# The Frontend runs on Live Server (another port), so the browser needs CORS to call us.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -120,7 +88,6 @@ class TranslateBody(BaseModel):
 
 @app.post("/translate")
 def translate(body: TranslateBody):
-    """No login needed: the sign-in page is translated too. Only en<->ar."""
     from api.translator import MAX_CHARS, MAX_TEXTS
     if len(body.texts) > MAX_TEXTS or any(len(t) > MAX_CHARS for t in body.texts):
         raise HTTPException(status_code=413, detail=f"At most {MAX_TEXTS} texts of {MAX_CHARS} characters")
@@ -166,9 +133,8 @@ def me(user=Depends(auth.current_user())):
 def forgot_password(body: ForgotBody):
     token = auth.create_reset_token(body.email)
     if token:
-        # No email server yet: the link is printed here so the admin can send it by hand
         print(f"[password reset] {body.email}: {FRONTEND_URL}/reset-password.html?token={token}")
-    return {"ok": True}  # same answer whether the email exists or not
+    return {"ok": True}
 
 
 @app.post("/auth/reset-password")
@@ -205,7 +171,7 @@ async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depen
         detections.append({
             "label": label,
             "confidence": round(float(box.conf), 2),
-            "box": [round(v) for v in box.xyxy[0].tolist()],  # x1, y1, x2, y2 in image pixels
+            "box": [round(v) for v in box.xyxy[0].tolist()],
             "severity": SEVERITY.get(label),
         })
 
@@ -215,7 +181,6 @@ async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depen
             [(now, camera, d["label"], d["confidence"], d["severity"]) for d in detections],
         )
 
-    # Any violation -> an incident with a snapshot; its PDF report is built on request (/incidents/<id>/report.pdf)
     incident_id = reports.record_incident(image, detections, camera, WEIGHTS.name, when)
 
     return {"width": image.width, "height": image.height, "detections": detections, "incident_id": incident_id}

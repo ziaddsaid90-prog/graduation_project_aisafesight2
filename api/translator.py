@@ -1,11 +1,3 @@
-"""
-Machine translation English <-> Arabic with local MarianMT models (Helsinki-NLP), on the GPU when there is one.
-
-- Models are downloaded once from Hugging Face into the user cache, then work offline.
-- Every translation is stored in SQLite (table translations), so a text is translated only once.
-- api/translation_fixes.json holds corrections for texts the model gets wrong. A fix always wins
-  over the model. To correct a translation, add it there and restart the API.
-"""
 from __future__ import annotations
 
 import json
@@ -18,7 +10,6 @@ from typing import Callable
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 MODELS = {("en", "ar"): "Helsinki-NLP/opus-mt-en-ar", ("ar", "en"): "Helsinki-NLP/opus-mt-ar-en"}
-# opus-mt-en-ar can write several Arabic variants; this token asks for standard Arabic
 TARGET_PREFIX = {("en", "ar"): ">>ara<< "}
 MAX_TEXTS = 300
 MAX_CHARS = 1000
@@ -45,14 +36,12 @@ class Translator:
             conn.executescript(SCHEMA)
 
     def _load_fixes(self) -> dict:
-        """{"en->ar": {"Sign in": "تسجيل الدخول", ...}, "ar->en": {...}}"""
         if not self.fixes_file.exists():
             return {}
         data = json.loads(self.fixes_file.read_text(encoding="utf-8"))
         return {pair: {k.strip(): v for k, v in table.items()} for pair, table in data.items() if not pair.startswith("_")}
 
     def preload(self) -> None:
-        """Load both models in the background so the first request is fast."""
         def work():
             for pair in MODELS:
                 try:
@@ -84,7 +73,6 @@ class Translator:
         result: list[str | None] = [None] * len(texts)
         todo: dict[str, list[int]] = {}
         for i, text in enumerate(texts):
-            # keep leading/trailing spaces (e.g. "Violations detected: ") around the translated core
             core = text.strip()
             if not core:
                 result[i] = text
@@ -97,7 +85,7 @@ class Translator:
             cores = list(todo)
             with self.connect() as conn:
                 cached = {}
-                for start in range(0, len(cores), 500):   # SQLite limits the number of ? per query
+                for start in range(0, len(cores), 500):
                     chunk = cores[start:start + 500]
                     rows = conn.execute(
                         f"SELECT source_text, translation FROM translations WHERE source_lang = ? AND target_lang = ? "
@@ -113,7 +101,7 @@ class Translator:
             for core, indexes in todo.items():
                 for i in indexes:
                     result[i] = texts[i].replace(core, cached[core])
-        return result  # type: ignore[return-value]
+        return result
 
     def _run_model(self, pair, texts: list[str]) -> list[str]:
         import torch

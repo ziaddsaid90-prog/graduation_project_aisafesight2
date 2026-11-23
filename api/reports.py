@@ -1,12 +1,3 @@
-"""
-Incident reports: one incident per checked image that contains at least one violation.
-
-- record_incident()  is called by /detect right after the model runs. It stores the incident and
-  a snapshot of the image with the boxes drawn on it (api/snapshots/<id>.jpg).
-- build_pdf()  makes the PDF on request, in Arabic or English, from the templates below.
-  Nothing is machine-translated: sentences are fixed templates per language, and only the
-  values (numbers, dates, violation types, camera) change.
-"""
 from __future__ import annotations
 
 import os
@@ -23,11 +14,11 @@ CREATE TABLE IF NOT EXISTS incidents (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at  TEXT    NOT NULL,
     camera      INTEGER NOT NULL,
-    severity    TEXT    NOT NULL,          -- highest severity in the image
+    severity    TEXT    NOT NULL,
     violations  INTEGER NOT NULL,
     persons     INTEGER NOT NULL,
-    weights     TEXT    NOT NULL,          -- model file that produced it
-    snapshot    TEXT    NOT NULL           -- file name inside api/snapshots/
+    weights     TEXT    NOT NULL,
+    snapshot    TEXT    NOT NULL
 );
 CREATE TABLE IF NOT EXISTS incident_items (
     incident_id INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
@@ -39,7 +30,6 @@ CREATE TABLE IF NOT EXISTS incident_items (
 
 SEVERITY_RANK = {"high": 1, "medium": 2}
 
-# ---------- texts (one template per language) ----------
 TEXT = {
     "ar": {
         "title": "تقرير مخالفة سلامة",
@@ -104,7 +94,7 @@ BOX_COLORS = {"violation": (220, 38, 38), "ok": (22, 163, 74), "other": (245, 15
 OK_CLASSES = {"helmet", "vest", "chain_closed"}
 
 FONT_DIR = Path(os.environ.get("SAFESIGHT_FONT_DIR", r"C:\Windows\Fonts"))
-FONT_REGULAR = os.environ.get("SAFESIGHT_FONT", "arial.ttf")       # must contain Arabic letters
+FONT_REGULAR = os.environ.get("SAFESIGHT_FONT", "arial.ttf")
 FONT_BOLD = os.environ.get("SAFESIGHT_FONT_BOLD", "arialbd.ttf")
 
 
@@ -129,10 +119,8 @@ class Reports:
         with self.connect() as conn:
             conn.executescript(SCHEMA)
 
-    # ---------- saving ----------
     def record_incident(self, image: Image.Image, detections: list[dict], camera: int,
                         weights: str, when: datetime) -> int | None:
-        """Store an incident if the image has violations. Returns its id, or None."""
         violations = [d for d in detections if d.get("severity")]
         if not violations:
             return None
@@ -177,7 +165,6 @@ class Reports:
             draw.text((x1 + 4, ty + 2), label, fill="white", font=font)
         img.save(path, quality=88)
 
-    # ---------- reading ----------
     def list_incidents(self, limit: int = 50) -> list[dict]:
         with self.connect() as conn:
             rows = conn.execute("SELECT * FROM incidents ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
@@ -202,7 +189,6 @@ class Reports:
             ).fetchall()
         return inc, items
 
-    # ---------- PDF ----------
     def build_pdf(self, incident_id: int, lang: str) -> bytes | None:
         inc, items = self._load(incident_id)
         if inc is None:
@@ -219,11 +205,10 @@ class Reports:
         pdf.set_auto_page_break(True, margin=18)
         pdf.add_font("main", "", str(FONT_DIR / FONT_REGULAR))
         pdf.add_font("main", "B", str(FONT_DIR / FONT_BOLD))
-        pdf.set_text_shaping(True)  # direction comes from the text itself (Unicode bidi), so Arabic runs right to left
+        pdf.set_text_shaping(True)
         pdf.add_page()
         w = pdf.epw
 
-        # header band
         pdf.set_fill_color(*NAVY)
         pdf.rect(0, 0, 210, 30, "F")
         pdf.set_fill_color(*ORANGE)
@@ -238,7 +223,6 @@ class Reports:
         pdf.cell(w, 12, "AI SafeSight", align="L" if rtl else "R")
         pdf.set_y(38)
 
-        # info grid: 4 boxes
         sev_color = RED if inc["severity"] == "high" else AMBER
         info = [(t["report_no"], f"#{inc['id']}", NAVY), (t["date"], format_date(when, lang), NAVY),
                 (t["time"], format_time(when, lang), NAVY), (t["camera"], str(inc["camera"]), NAVY),
@@ -261,7 +245,6 @@ class Reports:
             pdf.cell(box_w - 2, 7, value, align="C")
         pdf.set_y(y + 24)
 
-        # summary sentence
         pdf.set_text_color(*NAVY)
         pdf.set_font("main", "", 11)
         pdf.multi_cell(w, 7, t["summary"].format(count=inc["violations"], camera=inc["camera"],
@@ -272,7 +255,6 @@ class Reports:
         pdf.multi_cell(w, 6, t["persons"].format(persons=inc["persons"]), align=align, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
 
-        # details table
         self._heading(pdf, t["details"], align)
         cols = [(t["col_type"], 0.46), (t["col_count"], 0.14), (t["col_severity"], 0.2), (t["col_conf"], 0.2)]
         rows = [[t.get(r["label"], r["label"]), str(r["n"]), t.get(r["severity"], r["severity"]),
@@ -292,7 +274,6 @@ class Reports:
             pdf.ln()
         pdf.ln(5)
 
-        # snapshot
         snap = self.snapshot_dir / inc["snapshot"]
         if snap.exists():
             self._heading(pdf, t["snapshot"], align)
@@ -308,7 +289,6 @@ class Reports:
             pdf.image(str(snap), x=15 + (w - img_w) / 2, w=img_w, h=img_h)
             pdf.ln(5)
 
-        # required actions
         self._heading(pdf, t["actions"], align)
         pdf.set_font("main", "", 10)
         pdf.set_text_color(*NAVY)
@@ -316,7 +296,6 @@ class Reports:
             key = f"action_{r['label']}"
             if key in t:
                 if rtl:
-                    # the bidi engine would put a leading bullet on the left, so draw it ourselves on the right
                     y = pdf.get_y()
                     pdf.set_xy(15, y)
                     pdf.multi_cell(w - 6, 6.5, t[key], align="R", new_x="LMARGIN", new_y="NEXT")
@@ -327,7 +306,6 @@ class Reports:
                 else:
                     pdf.multi_cell(w, 6.5, "• " + t[key], align=align, new_x="LMARGIN", new_y="NEXT")
 
-        # footer (turn off page breaks first, otherwise writing near the bottom opens a new page)
         pdf.set_auto_page_break(False)
         pdf.set_y(-20)
         pdf.set_draw_color(*BORDER)

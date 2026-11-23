@@ -1,13 +1,8 @@
-// طبقة البيانات: المكان الوحيد اللي الصفحات بتجيب منه داتا.
-// USE_MOCK = true بيرجّع بيانات وهمية (لو عايز تشتغل على الشكل من غير ما تشغّل الـ API).
-// USE_MOCK = false بيكلم الـ Python API الحقيقي (api/main.py) اللي بيشغّل YOLO.
-const USE_MOCK = false; // خليها true لو عايز تشتغل على الشكل من غير ما تشغّل الـ API
+const USE_MOCK = false;
 const API_URL = "http://127.0.0.1:8000";
 
-// الكلاسات اللي تعتبر مخالفة (من prepared/titan_v1/data.yaml)
 const VIOLATION_CLASSES = ["no_helmet", "no_vest", "chain_open"];
 
-// بيبعت الطلب للـ API، ومعاه التوكن بتاع المستخدم لو مسجل دخول (auth.js)
 async function getJson(path, options) {
   options = options || {};
   const session = typeof getSession === "function" ? getSession() : null;
@@ -32,9 +27,6 @@ function wait(ms) {
   });
 }
 
-// ---------- تسجيل الدخول ----------
-// مستخدمين تجربة للوضع الوهمي بس. لما الـ API يجهز، المستخدمين هيبقوا في قاعدة البيانات
-// والباسوردات متشفرة هناك، ومش هيبقى فيه أي باسورد في كود الفرونت.
 const MOCK_USERS = [
   {
     email: "ziad@safesight.test",
@@ -62,7 +54,6 @@ const MOCK_USERS = [
   },
 ];
 
-// بترجع { token, user: { name, email, role } } أو بترمي خطأ code = "invalidCredentials"
 async function login(email, password) {
   if (USE_MOCK) {
     await wait(500);
@@ -91,7 +82,6 @@ async function login(email, password) {
   }
 }
 
-// بيرجع نجاح دايمًا حتى لو الإيميل مش موجود، عشان محدش يعرف مين عنده حساب
 async function requestPasswordReset(email) {
   if (USE_MOCK) {
     await wait(700);
@@ -104,7 +94,6 @@ async function requestPasswordReset(email) {
   });
 }
 
-// من صفحة reset-password.html (اللينك فيه token)
 async function resetPassword(token, password) {
   if (USE_MOCK) {
     await wait(500);
@@ -117,7 +106,6 @@ async function resetPassword(token, password) {
   });
 }
 
-// لـ Project Manager و HR Manager (صلاحية view_users)
 async function getUsers() {
   if (USE_MOCK) {
     return MOCK_USERS.map(function (u) {
@@ -143,8 +131,6 @@ async function getAlerts() {
   return getJson("/alerts");
 }
 
-// ---------- تقارير المخالفات (PDF) ----------
-// كل صورة فيها مخالفة بيتعملها تقرير في الـ API (صلاحية view_reports)
 async function getIncidents() {
   if (USE_MOCK) {
     return [
@@ -155,8 +141,6 @@ async function getIncidents() {
   return getJson("/incidents");
 }
 
-// بيجيب ملف الـ PDF باللغة اللي المستخدم مختارها ويفتحه في تاب جديدة.
-// بنجيبه بـ fetch (مش لينك عادي) عشان لازم نبعت التوكن مع الطلب.
 async function openIncidentReport(id, lang) {
   if (USE_MOCK) {
     alert("PDF reports need the real API (USE_MOCK = false)");
@@ -176,7 +160,6 @@ async function openIncidentReport(id, lang) {
   setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
 }
 
-// تقرير Power BI (متصدّر PDF). بيرجع لينك مؤقت للملف، أو null لو لسه ماتصدّرش.
 async function getBiReportUrl() {
   if (USE_MOCK) return null;
   const session = getSession();
@@ -192,13 +175,11 @@ async function getBiReportUrl() {
   return URL.createObjectURL(await res.blob());
 }
 
-// بيقول أنهي نموذج شغال، وهل هو النموذج المدرّب على معدات السلامة ولا لأ
 async function getHealth() {
   if (USE_MOCK) return { weights: "mock", ppe_model: true };
   return getJson("/health");
 }
 
-// box = [x1, y1, x2, y2] بالبكسل في الصورة الأصلية
 async function detectImage(file) {
   if (USE_MOCK) {
     await new Promise(function (r) {
