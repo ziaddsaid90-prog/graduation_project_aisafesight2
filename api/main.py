@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
@@ -235,3 +235,42 @@ def stats(user=Depends(auth.require("view_stats"))):
     missing = sum(counts.get(bad, 0) for _, bad in PPE_PAIRS)
     compliance = round(100 * worn / (worn + missing)) if worn + missing else 100
     return {"cameras": CAMERAS, "violationsToday": violations, "compliance": compliance}
+
+
+@app.get("/analytics")
+def analytics(days: int = 7, user=Depends(auth.require("view_stats"))):
+    days = max(1, min(days, 90))
+    now = datetime.now()
+    today = now.date()
+    start = (today - timedelta(days=days - 1)).isoformat()
+    with db() as conn:
+        hourly = dict(conn.execute(
+            "SELECT CAST(substr(created_at, 12, 2) AS INTEGER), COUNT(*) FROM detections "
+            "WHERE severity IS NOT NULL AND created_at >= ? GROUP BY 1", (today.isoformat(),)).fetchall())
+        daily_rows = conn.execute(
+            "SELECT substr(created_at, 1, 10) AS d, label, COUNT(*) FROM detections "
+            "WHERE created_at >= ? GROUP BY d, label", (start,)).fetchall()
+        by_type = dict(conn.execute(
+            "SELECT label, COUNT(*) FROM detections WHERE severity IS NOT NULL AND created_at >= ? GROUP BY label",
+            (start,)).fetchall())
+
+    per_day: dict[str, dict[str, int]] = {}
+    for d, label, n in daily_rows:
+        per_day.setdefault(d, {})[label] = n
+    day_list = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    violations_by_day, compliance_by_day = [], []
+    for d in day_list:
+        counts = per_day.get(d, {})
+        violations_by_day.append(sum(n for label, n in counts.items() if label in SEVERITY))
+        worn = sum(counts.get(ok, 0) for ok, _ in PPE_PAIRS)
+        missing = sum(counts.get(bad, 0) for _, bad in PPE_PAIRS)
+        compliance_by_day.append(round(100 * worn / (worn + missing), 1) if worn + missing else None)
+
+    return {
+        "hours": list(range(24)),
+        "violationsByHour": [hourly.get(h, 0) for h in range(24)],
+        "days": day_list,
+        "violationsByDay": violations_by_day,
+        "complianceByDay": compliance_by_day,
+        "violationsByType": {label: by_type.get(label, 0) for label in SEVERITY},
+    }

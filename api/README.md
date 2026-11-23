@@ -34,6 +34,7 @@ Forgot password: there is no email server yet, so `/auth/forgot-password` prints
 | POST | `/detect` (form: `file`, optional `camera`) | `check_image` | `{width, height, detections: [{label, confidence, box: [x1,y1,x2,y2], severity}]}` |
 | GET | `/alerts?limit=20` | `view_alerts` | latest violations `[{time, date, camera, violation, level}]` |
 | GET | `/stats` | `view_stats` | `{cameras, violationsToday, compliance}` |
+| GET | `/analytics?days=7` | `view_stats` | chart data: `violationsByHour` (today, 24 values), `days` + `violationsByDay` + `complianceByDay`, `violationsByType` |
 | GET | `/users` | `view_users` | `[{name, email, role}]` |
 | GET | `/incidents?limit=50` | `view_reports` | one row per checked image that had violations `[{id, date, time, camera, severity, violations, types}]` |
 | GET | `/incidents/<id>/report.pdf?lang=ar\|en` | `view_reports` | the incident report as a PDF, in that language |

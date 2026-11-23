@@ -52,6 +52,36 @@
         </div>
       </section>
 
+      <section class="alerts" data-permission="view_stats">
+        <div class="section-head">
+          <h2 data-i18n="analytics"></h2>
+          <select id="chartDays" class="chart-range">
+            <option value="7" data-i18n="last7Days"></option>
+            <option value="14" data-i18n="last14Days"></option>
+            <option value="30" data-i18n="last30Days"></option>
+          </select>
+        </div>
+        <p id="chartsEmpty" class="muted-text" hidden></p>
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3 data-i18n="chartByHour"></h3>
+            <div class="chart-box"><canvas id="chartHour"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3 data-i18n="chartByDay"></h3>
+            <div class="chart-box"><canvas id="chartDay"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3 data-i18n="chartByType"></h3>
+            <div class="chart-box"><canvas id="chartType"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3 data-i18n="chartCompliance"></h3>
+            <div class="chart-box"><canvas id="chartCompliance"></canvas></div>
+          </div>
+        </div>
+      </section>
+
       <section class="camera" data-permission="check_image">
         <h2 data-i18n="checkImage"></h2>
         <p id="modelNotice" class="notice" hidden></p>
@@ -119,6 +149,8 @@
 
     <script src="i18n.js"></script>
     <script src="api.js"></script>
+    <script src="vendor/chart.umd.min.js"></script>
+    <script src="charts.js"></script>
     <script>
       const session = requireAuth();
 
@@ -366,16 +398,19 @@
         renderUsers();
         renderReports();
         renderAll();
+        renderCharts();
       });
       if (hasPermission("check_image")) checkModel();
       renderUser();
       renderUsers();
       renderReports();
       renderAll();
+      renderCharts();
       loadBiReport();
       setInterval(function () {
         renderReports();
         renderAll();
+        renderCharts();
       }, 30000);
 </script>
   </body>

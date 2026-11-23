@@ -260,3 +260,27 @@ th, td { padding: 12px; text-align: start; border-bottom: 1px solid var(--border
   border: 1px solid var(--border);
   border-radius: 8px;
 }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 16px;
+}
+.chart-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.chart-card h3 { margin: 0 0 10px; font-size: 15px; color: var(--muted); }
+.chart-box { position: relative; height: 240px; }
+.chart-range {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: white;
+  color: var(--navy);
+}
+@media (max-width: 600px) {
+  .chart-grid { grid-template-columns: minmax(0, 1fr); }
+}

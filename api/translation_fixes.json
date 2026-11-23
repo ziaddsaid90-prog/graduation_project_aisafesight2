@@ -48,7 +48,17 @@
     "No vest": "بدون سترة عاكسة",
     "Wheelbarrow": "عربة يد",
     "Mixer truck": "خلاطة خرسانة",
-    "Vehicle": "مركبة"
+    "Vehicle": "مركبة",
+    "Analytics": "التحليلات",
+    "Last 7 days": "آخر 7 أيام",
+    "Last 14 days": "آخر 14 يومًا",
+    "Last 30 days": "آخر 30 يومًا",
+    "Violations by hour (today)": "المخالفات حسب الساعة (اليوم)",
+    "Violations per day": "المخالفات اليومية",
+    "Violations by type": "المخالفات حسب النوع",
+    "PPE compliance per day": "نسبة الالتزام بمعدات السلامة يوميًا",
+    "No violations recorded in this period yet. The charts fill in as the camera and model detect violations.": "لا توجد مخالفات مسجلة في هذه الفترة بعد. ستمتلئ الرسوم البيانية عندما تكشف الكاميرا والنموذج المخالفات.",
+    "Chain open": "سلسلة الأمان مفتوحة"
   },
   "ar->en": {}
 }

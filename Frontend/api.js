@@ -115,6 +115,25 @@ async function getUsers() {
   return getJson("/users");
 }
 
+async function getAnalytics(days) {
+  if (USE_MOCK) {
+    const dayList = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000);
+      dayList.push(d.toISOString().slice(0, 10));
+    }
+    return {
+      hours: Array.from({ length: 24 }, function (_, h) { return h; }),
+      violationsByHour: [0, 0, 0, 0, 0, 0, 1, 4, 7, 9, 6, 5, 3, 4, 6, 5, 3, 1, 0, 0, 0, 0, 0, 0],
+      days: dayList,
+      violationsByDay: dayList.map(function (_, i) { return 8 + ((i * 7) % 11); }),
+      complianceByDay: dayList.map(function (_, i) { return 70 + ((i * 5) % 20); }),
+      violationsByType: { no_helmet: 26, no_vest: 18, chain_open: 3 },
+    };
+  }
+  return getJson("/analytics?days=" + days);
+}
+
 async function getStats() {
   if (USE_MOCK) return { cameras: 4, violationsToday: 12, compliance: 87 };
   return getJson("/stats");
