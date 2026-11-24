@@ -38,7 +38,7 @@ function touchSession() {
 function logout() {
   const session = getSession();
   if (session && typeof USE_MOCK !== "undefined" && !USE_MOCK) {
-    fetch(API_URL + "/auth/logout", {
+    fetch(API_URL + "/api/auth/logout", {
       method: "POST",
       headers: { Authorization: "Bearer " + session.token },
       keepalive: true,

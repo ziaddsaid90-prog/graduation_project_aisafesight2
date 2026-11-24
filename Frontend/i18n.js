@@ -30,6 +30,38 @@ const translations = {
     passwordTooShort: "The password must be at least 8 characters",
     passwordsDontMatch: "The passwords don't match",
     resetLinkInvalid: "This link is invalid or expired. Request a new one.",
+    navDashboard: "Dashboard",
+    navAlerts: "Alerts",
+    navReports: "Reports",
+    safetyOverview: "Safety overview",
+    overviewSubtitle: "Live PPE monitoring on site",
+    systemOnline: "System online",
+    systemOffline: "Disconnected",
+    alertsToday: "Alerts today",
+    safetyScore: "Safety score",
+    camerasTitle: "Cameras",
+    viewAll: "View all",
+    latestFrame: "Latest violation frame",
+    noFrameYet: "No violation frames yet",
+    safetyAnalytics: "Safety analytics",
+    violationsLabel: "Violations",
+    topViolations: "Top violations",
+    siteStatistics: "Site statistics",
+    totalViolations: "Total violations",
+    avgCompliance: "Average compliance",
+    peakHour: "Peak hour today",
+    mostCommon: "Most common",
+    noCameras: "No cameras yet",
+    cameraOnline: "Live",
+    cameraIdle: "No signal",
+    lastSeen: "Last frame",
+    never: "never",
+    activeAlerts: "Active alerts",
+    no_helmet_no_vest: "No helmet and no vest",
+    ack: "Mark as seen",
+    acknowledged: "Seen",
+    ongoing: "Ongoing",
+    status: "Status",
     users: "Users",
     analytics: "Analytics",
     last7Days: "Last 7 days",
@@ -95,7 +127,7 @@ const FIXED = {
 };
 
 const I18N_DEFAULT_API = "http://127.0.0.1:8000";
-const CACHE_KEY = "i18n_cache_ar_v1";
+const CACHE_KEY = "i18n_cache_ar_v2";
 
 let arCache = {};
 try {
@@ -117,7 +149,7 @@ function t(key) {
 
 async function translateTexts(texts, target, source) {
   const apiUrl = typeof API_URL !== "undefined" ? API_URL : I18N_DEFAULT_API;
-  const res = await fetch(apiUrl + "/translate", {
+  const res = await fetch(apiUrl + "/api/translate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ texts: texts, target: target || "ar", source: source || "en" }),

@@ -5,166 +5,360 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI SafeSight</title>
     <link rel="icon" href="logo.svg" />
-    <link rel="stylesheet" href="style.css" />
-    <script src="auth.js"></script>
+    <!-- ?v=... makes browsers load the new file instead of an old cached copy: change it (in every page) whenever a .css/.js file changes -->
+    <link rel="stylesheet" href="style.css?v=20261124c" />
+    <link rel="stylesheet" href="dashboard.css?v=20261124c" />
+    <script src="auth.js?v=20261124c"></script>
     <script>
       if (!getSession()) window.location.replace("index.html");
       protectFromBackButton();
 </script>
   </head>
-  <body>
-    <header class="topbar">
-      <div class="brand">
-        <img src="logo-dark-bg.svg" alt="" />
-        <div><span>AI</span> SafeSight</div>
+  <body class="dash">
+    <div class="app">
+      <aside class="sidebar" id="sidebar">
+        <div class="side-brand">
+          <img src="logo-dark-bg.svg" alt="" />
+          <div class="side-wordmark"><span>AI</span> SafeSight</div>
+          <div class="side-tagline" data-i18n="tagline"></div>
+        </div>
+
+        <nav class="side-nav">
+          <button class="nav-item" data-view="overview">
+            <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+            <span data-i18n="navDashboard"></span>
+          </button>
+          <button class="nav-item" data-view="check" data-permission="check_image">
+            <svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>
+            <span data-i18n="checkImage"></span>
+          </button>
+          <button class="nav-item" data-view="alerts" data-permission="view_alerts">
+            <svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+            <span data-i18n="navAlerts"></span>
+            <span class="nav-badge" id="navAlertBadge" hidden></span>
+          </button>
+          <button class="nav-item" data-view="analytics" data-permission="view_stats">
+            <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+            <span data-i18n="analytics"></span>
+          </button>
+          <button class="nav-item" data-view="reports" data-permission="view_reports">
+            <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+            <span data-i18n="navReports"></span>
+          </button>
+          <button class="nav-item" data-view="users" data-permission="view_users">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-4-5.6"/></svg>
+            <span data-i18n="users"></span>
+          </button>
+        </nav>
+
+        <div class="side-user">
+          <div class="avatar" id="userAvatar"></div>
+          <div class="side-user-text">
+            <div id="userName"></div>
+            <div id="userRole" class="side-role"></div>
+          </div>
+        </div>
+        <button class="nav-item side-logout" onclick="logout()">
+          <svg viewBox="0 0 24 24"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"/></svg>
+          <span data-i18n="logout"></span>
+        </button>
+      </aside>
+      <div class="side-backdrop" id="sideBackdrop"></div>
+
+      <div class="main">
+        <header class="dash-header">
+          <button class="menu-btn" id="menuBtn" aria-label="Menu">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          </button>
+          <div class="dash-title">
+            <h1 id="viewTitle"></h1>
+            <p data-i18n="overviewSubtitle"></p>
+          </div>
+          <div class="dash-header-actions">
+            <span class="status-pill" id="statusPill"><i></i><span id="statusText"></span></span>
+            <span class="clock" id="clock"></span>
+            <button class="lang-btn" onclick="toggleLang()" data-i18n="langBtn"></button>
+          </div>
+        </header>
+
+        <main class="content">
+          <!-- ============ Overview ============ -->
+          <section class="view" data-view="overview">
+            <div class="kpis" data-permission="view_stats">
+              <div class="kpi">
+                <div class="kpi-icon blue"><svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 10l5-3v10l-5-3"/></svg></div>
+                <div class="kpi-text"><b id="statCameras">-</b><span data-i18n="cameras"></span></div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-icon red"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18v.01"/></svg></div>
+                <div class="kpi-text"><b id="statAlerts">-</b><span data-i18n="activeAlerts"></span></div>
+                <svg class="spark red" id="sparkAlerts" viewBox="0 0 100 32" preserveAspectRatio="none"></svg>
+              </div>
+              <div class="kpi">
+                <div class="kpi-icon orange"><svg viewBox="0 0 24 24"><path d="M3 18h18M5 18v-3a7 7 0 0 1 14 0v3M10 8V5h4v3"/></svg></div>
+                <div class="kpi-text"><b id="statViolations">-</b><span data-i18n="violationsToday"></span></div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-icon green"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div>
+                <div class="kpi-text"><b id="statCompliance">-</b><span data-i18n="safetyScore"></span></div>
+                <svg class="spark green" id="sparkCompliance" viewBox="0 0 100 32" preserveAspectRatio="none"></svg>
+              </div>
+            </div>
+
+            <div class="row-main">
+              <div class="panel" data-permission="view_stats">
+                <div class="panel-head"><h2 data-i18n="camerasTitle"></h2></div>
+                <div class="camera-list" id="cameraList"></div>
+              </div>
+
+              <div class="panel live-panel" data-permission="view_alerts">
+                <div class="panel-head">
+                  <h2><span class="live-dot" id="liveDot"></span><span id="liveTitle"></span></h2>
+                  <button class="icon-btn" id="liveExpand" aria-label="Full screen">
+                    <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+                  </button>
+                </div>
+                <div class="live-frame" id="liveFrame">
+                  <p class="muted-text" data-i18n="noFrameYet"></p>
+                </div>
+                <p class="live-caption" id="liveCaption"></p>
+              </div>
+
+              <div class="panel" data-permission="view_alerts">
+                <div class="panel-head">
+                  <h2 data-i18n="recentAlerts"></h2>
+                  <button class="link-btn" data-goto="alerts"><span data-i18n="viewAll"></span></button>
+                </div>
+                <div class="alert-cards" id="alertCards"></div>
+              </div>
+            </div>
+
+            <div class="row-bottom" data-permission="view_stats">
+              <div class="panel">
+                <div class="panel-head">
+                  <h2 data-i18n="safetyAnalytics"></h2>
+                  <select class="chart-range" id="chartDays">
+                    <option value="7" data-i18n="last7Days"></option>
+                    <option value="14" data-i18n="last14Days"></option>
+                    <option value="30" data-i18n="last30Days"></option>
+                  </select>
+                </div>
+                <div class="trend-wrap">
+                  <div class="chart-box"><canvas id="chartTrend"></canvas></div>
+                  <div class="score-ring" id="scoreRing">
+                    <div><b id="scoreValue">-</b><span data-i18n="safetyScore"></span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head"><h2 data-i18n="topViolations"></h2></div>
+                <div class="top-wrap">
+                  <div class="donut-box"><canvas id="chartTop"></canvas></div>
+                  <ul class="top-legend" id="topLegend"></ul>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head"><h2 data-i18n="siteStatistics"></h2></div>
+                <div class="site-stats">
+                  <div><svg viewBox="0 0 24 24" class="orange"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/></svg><b id="siteTotal">-</b><span data-i18n="totalViolations"></span></div>
+                  <div><svg viewBox="0 0 24 24" class="green"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/></svg><b id="siteCompliance">-</b><span data-i18n="avgCompliance"></span></div>
+                  <div><svg viewBox="0 0 24 24" class="blue"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><b id="sitePeak">-</b><span data-i18n="peakHour"></span></div>
+                  <div><svg viewBox="0 0 24 24" class="red"><path d="M12 3l10 18H2zM12 10v5"/></svg><b id="siteCommon">-</b><span data-i18n="mostCommon"></span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ Check image ============ -->
+          <section class="view" data-view="check" data-permission="check_image" hidden>
+            <div class="panel">
+              <p id="modelNotice" class="notice" hidden></p>
+              <label class="upload-btn">
+                <input type="file" id="imageInput" accept="image/*" hidden />
+                <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+                <span data-i18n="chooseImage"></span>
+              </label>
+              <canvas id="preview" hidden></canvas>
+              <p id="status"></p>
+            </div>
+          </section>
+
+          <!-- ============ Alerts ============ -->
+          <section class="view" data-view="alerts" data-permission="view_alerts" hidden>
+            <div class="panel table-panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="time"></th>
+                    <th data-i18n="camera"></th>
+                    <th data-i18n="violation"></th>
+                    <th data-i18n="severity"></th>
+                    <th data-i18n="frame"></th>
+                    <th data-i18n="status"></th>
+                  </tr>
+                </thead>
+                <tbody id="alertsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ============ Analytics ============ -->
+          <section class="view" data-view="analytics" data-permission="view_stats" hidden>
+            <div class="panel">
+              <div class="panel-head">
+                <p id="chartsEmpty" class="muted-text" hidden></p>
+                <select class="chart-range" id="chartDays2">
+                  <option value="7" data-i18n="last7Days"></option>
+                  <option value="14" data-i18n="last14Days"></option>
+                  <option value="30" data-i18n="last30Days"></option>
+                </select>
+              </div>
+              <div class="chart-grid">
+                <div class="chart-card">
+                  <h3 data-i18n="chartByHour"></h3>
+                  <div class="chart-box"><canvas id="chartHour"></canvas></div>
+                </div>
+                <div class="chart-card">
+                  <h3 data-i18n="chartByDay"></h3>
+                  <div class="chart-box"><canvas id="chartDay"></canvas></div>
+                </div>
+                <div class="chart-card">
+                  <h3 data-i18n="chartByType"></h3>
+                  <div class="chart-box"><canvas id="chartType"></canvas></div>
+                </div>
+                <div class="chart-card">
+                  <h3 data-i18n="chartCompliance"></h3>
+                  <div class="chart-box"><canvas id="chartCompliance"></canvas></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ Reports ============ -->
+          <section class="view" data-view="reports" data-permission="view_reports" hidden>
+            <div class="panel">
+              <div class="panel-head">
+                <h2 data-i18n="biReport"></h2>
+                <button id="biOpen" class="pdf-btn" data-i18n="openFullScreen" hidden></button>
+              </div>
+              <p id="biMessage" class="muted-text"></p>
+              <iframe id="biFrame" class="bi-frame" title="Power BI report" hidden></iframe>
+            </div>
+            <div class="panel table-panel">
+              <div class="panel-head"><h2 data-i18n="reports"></h2></div>
+              <p class="muted-text" data-i18n="reportsIntro"></p>
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="reportNo"></th>
+                    <th data-i18n="dateTime"></th>
+                    <th data-i18n="camera"></th>
+                    <th data-i18n="violation"></th>
+                    <th data-i18n="severity"></th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="reportsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ============ Users ============ -->
+          <section class="view" data-view="users" data-permission="view_users" hidden>
+            <div class="panel table-panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="name"></th>
+                    <th data-i18n="email"></th>
+                    <th data-i18n="role"></th>
+                  </tr>
+                </thead>
+                <tbody id="usersBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </main>
       </div>
-      <div class="topbar-actions">
-        <div class="user-info">
-          <span id="userName"></span>
-          <span id="userRole" class="role-badge"></span>
-        </div>
-        <button
-          class="lang-btn"
-          onclick="toggleLang()"
-          data-i18n="langBtn"
-        ></button>
-        <button
-          class="logout-btn"
-          onclick="logout()"
-          data-i18n="logout"
-        ></button>
-      </div>
-    </header>
-
-    <main class="container">
-      <section class="cards" data-permission="view_stats">
-        <div class="card">
-          <h3 data-i18n="cameras"></h3>
-          <p class="number" id="statCameras">-</p>
-        </div>
-        <div class="card">
-          <h3 data-i18n="violationsToday"></h3>
-          <p class="number" id="statViolations">-</p>
-        </div>
-        <div class="card">
-          <h3 data-i18n="compliance"></h3>
-          <p class="number" id="statCompliance">-</p>
-        </div>
-      </section>
-
-      <section class="camera" data-permission="check_image">
-        <h2 data-i18n="checkImage"></h2>
-        <p id="modelNotice" class="notice" hidden></p>
-        <input type="file" id="imageInput" accept="image/*" />
-        <canvas id="preview" hidden></canvas>
-        <p id="status"></p>
-      </section>
-
-      <section class="alerts" data-permission="view_alerts">
-        <h2 data-i18n="recentAlerts"></h2>
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="time"></th>
-              <th data-i18n="camera"></th>
-              <th data-i18n="violation"></th>
-              <th data-i18n="severity"></th>
-              <th data-i18n="frame"></th>
-            </tr>
-          </thead>
-          <tbody id="alertsBody"></tbody>
-        </table>
-      </section>
-
-      <section class="alerts" data-permission="view_stats">
-        <div class="section-head">
-          <h2 data-i18n="analytics"></h2>
-          <select id="chartDays" class="chart-range">
-            <option value="7" data-i18n="last7Days"></option>
-            <option value="14" data-i18n="last14Days"></option>
-            <option value="30" data-i18n="last30Days"></option>
-          </select>
-        </div>
-        <p id="chartsEmpty" class="muted-text" hidden></p>
-        <div class="chart-grid">
-          <div class="chart-card">
-            <h3 data-i18n="chartByHour"></h3>
-            <div class="chart-box"><canvas id="chartHour"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <h3 data-i18n="chartByDay"></h3>
-            <div class="chart-box"><canvas id="chartDay"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <h3 data-i18n="chartByType"></h3>
-            <div class="chart-box"><canvas id="chartType"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <h3 data-i18n="chartCompliance"></h3>
-            <div class="chart-box"><canvas id="chartCompliance"></canvas></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="alerts" data-permission="view_reports">
-        <div class="section-head">
-          <h2 data-i18n="biReport"></h2>
-          <button id="biOpen" class="pdf-btn" data-i18n="openFullScreen" hidden></button>
-        </div>
-        <p id="biMessage" class="muted-text"></p>
-        <iframe id="biFrame" class="bi-frame" title="Power BI report" hidden></iframe>
-      </section>
-
-      <section class="alerts" data-permission="view_reports">
-        <h2 data-i18n="reports"></h2>
-        <p class="muted-text" data-i18n="reportsIntro"></p>
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="reportNo"></th>
-              <th data-i18n="dateTime"></th>
-              <th data-i18n="camera"></th>
-              <th data-i18n="violation"></th>
-              <th data-i18n="severity"></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="reportsBody"></tbody>
-        </table>
-      </section>
-
-      <section class="alerts" data-permission="view_users">
-        <h2 data-i18n="users"></h2>
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="name"></th>
-              <th data-i18n="email"></th>
-              <th data-i18n="role"></th>
-            </tr>
-          </thead>
-          <tbody id="usersBody"></tbody>
-        </table>
-      </section>
-    </main>
+    </div>
 
     <div id="frameView" class="frame-view" hidden onclick="this.hidden = true">
       <img id="frameViewImg" alt="" />
     </div>
 
-    <script src="i18n.js"></script>
-    <script src="api.js"></script>
+    <script src="i18n.js?v=20261124c"></script>
+    <script src="api.js?v=20261124c"></script>
     <script src="vendor/chart.umd.min.js"></script>
-    <script src="charts.js"></script>
+    <script src="charts.js?v=20261124c"></script>
     <script>
       const session = requireAuth();
+
+      // ---------- Views (sidebar) ----------
+      const VIEW_TITLES = {
+        overview: "safetyOverview", check: "checkImage", alerts: "navAlerts",
+        analytics: "analytics", reports: "navReports", users: "users",
+      };
+      let currentView = "overview";
+
+      function viewAllowed(name) {
+        const btn = document.querySelector('.nav-item[data-view="' + name + '"]');
+        return btn && !btn.hidden;
+      }
+
+      function showView(name) {
+        if (!VIEW_TITLES[name] || !viewAllowed(name)) name = "overview";
+        currentView = name;
+        document.querySelectorAll("section.view").forEach(function (v) {
+          v.hidden = v.dataset.view !== name ||
+            (v.dataset.permission && !hasPermission(v.dataset.permission));
+        });
+        document.querySelectorAll(".nav-item[data-view]").forEach(function (b) {
+          b.classList.toggle("active", b.dataset.view === name);
+        });
+        document.getElementById("viewTitle").textContent = t(VIEW_TITLES[name]);
+        document.body.classList.remove("side-open");
+        if (location.hash.slice(1) !== name) history.replaceState(null, "", "#" + name);
+      }
+
+      document.querySelectorAll(".nav-item[data-view], [data-goto]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          showView(b.dataset.view || b.dataset.goto);
+        });
+      });
+      document.getElementById("menuBtn").addEventListener("click", function () {
+        document.body.classList.toggle("side-open");
+      });
+      document.getElementById("sideBackdrop").addEventListener("click", function () {
+        document.body.classList.remove("side-open");
+      });
+      window.addEventListener("hashchange", function () {
+        showView(location.hash.slice(1));
+      });
+
+      // ---------- Header: clock + connection status ----------
+      function renderClock() {
+        const locale = currentLang === "ar" ? "ar-EG-u-nu-latn" : "en-GB";
+        const now = new Date();
+        document.getElementById("clock").textContent =
+          now.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", year: "numeric" }) +
+          "   " + now.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+      }
+
+      let liveConnected = false;
+      function renderStatus() {
+        const pill = document.getElementById("statusPill");
+        pill.classList.toggle("off", !liveConnected);
+        document.getElementById("statusText").textContent = t(liveConnected ? "systemOnline" : "systemOffline");
+        document.getElementById("liveDot").classList.toggle("off", !liveConnected);
+      }
 
       function renderUser() {
         if (!session) return;
         document.getElementById("userName").textContent = session.user.name;
-        document.getElementById("userRole").textContent = t(
-          "role_" + session.user.role,
-        );
+        document.getElementById("userRole").textContent = t("role_" + session.user.role);
+        document.getElementById("userAvatar").textContent = session.user.name.trim().charAt(0).toUpperCase();
       }
 
       async function renderUsers() {
@@ -187,6 +381,30 @@
         });
       }
 
+      function uiLocale() {
+        return currentLang === "ar" ? "ar-EG-u-nu-latn" : "en-GB";
+      }
+
+      // ts from the API is UTC ("2026-11-23T10:15:02Z"); the browser shows it in local time
+      function tsTime(ts) {
+        return new Date(ts).toLocaleTimeString(uiLocale(), { hour: "numeric", minute: "2-digit" });
+      }
+
+      function tsDateTime(ts) {
+        return new Date(ts).toLocaleString(uiLocale(), {
+          weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
+        });
+      }
+
+      // "cam3" or 3 -> "Camera 3" / "الكاميرا 3"; other ids show the camera's name
+      function cameraName(id) {
+        const m = String(id).match(/^(?:cam)?(\d+)$/);
+        if (m) return t("camera") + " " + m[1];
+        const cam = cameraList.find(function (c) { return c.id === id; });
+        return cam ? cam.name : String(id);
+      }
+
+      // ---------- Reports ----------
       async function renderReports() {
         if (!hasPermission("view_reports")) return;
         const body = document.getElementById("reportsBody");
@@ -205,9 +423,9 @@
             row.innerHTML =
               `<td>#${inc.id}</td>` +
               `<td>${formatDateTime(inc.date, inc.time)}</td>` +
-              `<td>${t("camera")} ${inc.camera}</td>` +
+              `<td>${cameraName(inc.camera)}</td>` +
               `<td>${types}</td>` +
-              `<td class="${inc.severity}">${t(inc.severity)}</td>` +
+              `<td><span class="chip ${inc.severity}">${t(inc.severity)}</span></td>` +
               `<td><button class="pdf-btn" data-id="${inc.id}">${t("downloadPdf")}</button></td>`;
             body.appendChild(row);
           });
@@ -256,6 +474,7 @@
         }
       });
 
+      // ---------- Check an image ----------
       const input = document.getElementById("imageInput");
       const preview = document.getElementById("preview");
       const status = document.getElementById("status");
@@ -309,75 +528,13 @@
           return VIOLATION_CLASSES.includes(d.label);
         });
         status.textContent =
-          t("detected") +
-          violations.length +
+          t("detected") + violations.length +
           (violations.length
-            ? " (" +
-              violations
-                .map(function (d) {
-                  return t(d.label);
-                })
-                .join("، ") +
-              ")"
+            ? " (" + violations.map(function (d) { return t(d.label); }).join("، ") + ")"
             : "");
       }
 
-      let newAlertIds = new Set();
-
-      async function showAlertFrame(cell, id) {
-        try {
-          const url = await getAlertFrameUrl(id);
-          const img = document.createElement("img");
-          img.src = url;
-          img.className = "alert-frame";
-          img.alt = t("frame");
-          img.onclick = function () {
-            document.getElementById("frameViewImg").src = url;
-            document.getElementById("frameView").hidden = false;
-          };
-          cell.appendChild(img);
-        } catch (e) {
-          cell.textContent = "-";
-        }
-      }
-
-      async function renderAll() {
-        try {
-          if (hasPermission("view_stats")) {
-            const stats = await getStats();
-            document.getElementById("statCameras").textContent = stats.cameras;
-            document.getElementById("statViolations").textContent =
-              stats.violationsToday;
-            document.getElementById("statCompliance").textContent =
-              stats.compliance + "%";
-          }
-
-          if (!hasPermission("view_alerts")) return;
-          const alerts = await getAlerts();
-          tbody.innerHTML = "";
-          if (alerts.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="empty">${t("noAlerts")}</td></tr>`;
-          }
-          alerts.forEach(function (a) {
-            const row = document.createElement("tr");
-            if (newAlertIds.has(a.id)) row.className = "alert-new";
-            row.innerHTML =
-              `<td>${a.time}</td>` +
-              `<td>${t("camera")} ${a.camera}</td>` +
-              `<td>${t(a.violation)}</td>` +
-              `<td class="${a.level}">${t(a.level)}</td>` +
-              `<td class="frame-cell">${a.hasFrame ? "" : "-"}</td>`;
-            tbody.appendChild(row);
-            if (a.hasFrame) showAlertFrame(row.lastElementChild, a.id);
-          });
-        } catch (e) {
-          if (e.status === 401) return logout();
-          status.textContent = t("apiError");
-        }
-      }
-
       let loadedImg = null;
-
       input.addEventListener("change", async function () {
         const file = input.files[0];
         if (!file) return;
@@ -394,8 +551,7 @@
           lastResult = await detectImage(file);
           drawResult(img, lastResult.detections);
           showResultText();
-          renderAll();
-          renderReports();
+          refreshAll();
         } catch (e) {
           status.textContent = t("apiError");
         }
@@ -405,53 +561,272 @@
         try {
           const health = await getHealth();
           modelNotice.hidden = health.ppe_model;
-          modelNotice.textContent =
-            t("demoModel") + " (" + health.weights + ")";
+          modelNotice.textContent = t("demoModel") + " (" + health.weights + ")";
         } catch (e) {
           modelNotice.hidden = true;
         }
       }
 
-      status.textContent = t("chooseImage");
+      // ---------- Frames ----------
+      function openFrame(url) {
+        document.getElementById("frameViewImg").src = url;
+        document.getElementById("frameView").hidden = false;
+      }
+
+      async function frameImg(snapshotUrl, className) {
+        const url = await getSnapshotUrl(snapshotUrl);
+        const img = document.createElement("img");
+        img.src = url;
+        img.className = className;
+        img.alt = t("frame");
+        img.onclick = function (e) {
+          e.stopPropagation();
+          openFrame(url);
+        };
+        return img;
+      }
+
+      async function showAlertFrame(cell, snapshotUrl) {
+        try {
+          cell.appendChild(await frameImg(snapshotUrl, "alert-frame"));
+        } catch (e) {
+          cell.textContent = "-";
+        }
+      }
+
+      // ---------- Overview: KPIs, cameras, live frame, recent alerts ----------
+      let newAlertIds = new Set();
+      let latestAlerts = [];
+      let cameraList = [];
+      let selectedCamera = null;
+      let liveSnapshot = null;
+
+      function pad2(n) {
+        return n === null || n === undefined ? "-" : String(n).padStart(2, "0");
+      }
+
+      function renderKpis(stats) {
+        document.getElementById("statCameras").textContent =
+          pad2(cameraList.filter(function (c) { return c.active; }).length);
+        document.getElementById("statAlerts").textContent = pad2(stats.active_alerts);
+        document.getElementById("statViolations").textContent = pad2(stats.violations);
+        document.getElementById("statCompliance").textContent =
+          stats.safety_index === null ? "-" : Math.round(stats.safety_index * 100) + "%";
+        const badge = document.getElementById("navAlertBadge");
+        badge.textContent = stats.active_alerts;
+        badge.hidden = !stats.active_alerts;
+      }
+
+      function renderCameras() {
+        const list = document.getElementById("cameraList");
+        list.innerHTML = "";
+        if (cameraList.length === 0) {
+          list.innerHTML = `<p class="muted-text">${t("noCameras")}</p>`;
+          return;
+        }
+        cameraList.forEach(function (c) {
+          const item = document.createElement("button");
+          item.className = "camera-item" + (c.id === selectedCamera ? " selected" : "");
+          const seen = c.last_seen ? tsDateTime(c.last_seen) : t("never");
+          item.innerHTML =
+            `<div class="cam-thumb"><svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 10l5-3v10l-5-3"/></svg></div>` +
+            `<div class="cam-text"><b><i class="dot ${c.online ? "on" : ""}"></i>${cameraName(c.id)}</b>` +
+            `<span>${c.location || t("lastSeen") + ": " + seen}</span></div>` +
+            `<span class="cam-status ${c.online ? "on" : ""}">${t(c.online ? "cameraOnline" : "cameraIdle")}</span>`;
+          item.addEventListener("click", function () {
+            selectedCamera = selectedCamera === c.id ? null : c.id;
+            renderCameras();
+            renderLive();
+          });
+          list.appendChild(item);
+          if (c.last_snapshot_url && hasPermission("view_alerts")) {
+            frameImg(c.last_snapshot_url, "").then(function (img) {
+              const thumb = item.querySelector(".cam-thumb");
+              thumb.innerHTML = "";
+              thumb.appendChild(img);
+            }).catch(function () {});
+          }
+        });
+      }
+
+      async function renderLive() {
+        if (!hasPermission("view_alerts")) return;
+        const frame = document.getElementById("liveFrame");
+        const caption = document.getElementById("liveCaption");
+        let alert = latestAlerts.find(function (a) {
+          return a.snapshot_url && (selectedCamera === null || a.camera_id === selectedCamera);
+        });
+        if (!alert && selectedCamera !== null) {
+          const cam = cameraList.find(function (c) { return c.id === selectedCamera; });
+          if (cam && cam.last_snapshot_url) alert = { snapshot_url: cam.last_snapshot_url, camera_id: cam.id };
+        }
+        document.getElementById("liveTitle").textContent =
+          (selectedCamera !== null ? cameraName(selectedCamera) + " · " : "") + t("latestFrame");
+        if (!alert) {
+          liveSnapshot = null;
+          frame.innerHTML = `<p class="muted-text">${t("noFrameYet")}</p>`;
+          caption.textContent = "";
+          return;
+        }
+        caption.innerHTML = alert.violation
+          ? `<span class="chip ${alert.severity}">${t(alert.severity)}</span> ${t(alert.violation)} · ` +
+            `${cameraName(alert.camera_id)} · ${tsTime(alert.ts)}`
+          : cameraName(alert.camera_id);
+        if (liveSnapshot === alert.snapshot_url) return;
+        liveSnapshot = alert.snapshot_url;
+        try {
+          const img = await frameImg(alert.snapshot_url, "live-img");
+          frame.innerHTML = "";
+          frame.appendChild(img);
+        } catch (e) {
+          frame.innerHTML = `<p class="muted-text">${t("noFrameYet")}</p>`;
+        }
+      }
+      document.getElementById("liveExpand").addEventListener("click", function () {
+        const img = document.querySelector("#liveFrame img");
+        if (img) openFrame(img.src);
+      });
+
+      // ✓ button / "Seen" label for one alert
+      function ackControl(a) {
+        if (a.acknowledged) return `<span class="ack-done" title="${t("acknowledged")}">✓ ${t("acknowledged")}</span>`;
+        return `<button class="ack-btn" data-ack="${a.alert_id}" title="${t("ack")}" aria-label="${t("ack")}">` +
+               `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5 5-5.5"/></svg></button>`;
+      }
+
+      function renderAlertCards() {
+        const box = document.getElementById("alertCards");
+        box.innerHTML = "";
+        if (latestAlerts.length === 0) {
+          box.innerHTML = `<p class="muted-text">${t("noAlerts")}</p>`;
+          return;
+        }
+        latestAlerts.slice(0, 4).forEach(function (a) {
+          const card = document.createElement("div");
+          card.className = "alert-card " + a.severity + (a.acknowledged ? " seen" : "") +
+            (newAlertIds.has(a.alert_id) ? " alert-new" : "");
+          card.innerHTML =
+            `<div class="ac-thumb"></div>` +
+            `<div class="ac-text"><span class="chip ${a.severity}">${t(a.severity)}</span>` +
+            `<b>${t(a.violation)}</b><span>${cameraName(a.camera_id)} · ${tsTime(a.ts)}` +
+            `${a.end_ts ? "" : " · " + t("ongoing")}</span></div>` +
+            `<div class="ac-ack">${ackControl(a).replace(/✓ .*<\/span>/, "✓</span>")}</div>`;
+          box.appendChild(card);
+          if (a.snapshot_url) {
+            frameImg(a.snapshot_url, "").then(function (img) {
+              card.querySelector(".ac-thumb").appendChild(img);
+            }).catch(function () {});
+          }
+        });
+      }
+
+      function renderAlertTable() {
+        tbody.innerHTML = "";
+        if (latestAlerts.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" class="empty">${t("noAlerts")}</td></tr>`;
+        }
+        latestAlerts.forEach(function (a) {
+          const row = document.createElement("tr");
+          if (newAlertIds.has(a.alert_id)) row.className = "alert-new";
+          if (a.acknowledged) row.classList.add("seen");
+          row.innerHTML =
+            `<td>${tsDateTime(a.ts)}${a.end_ts ? "" : ` <span class="chip ongoing">${t("ongoing")}</span>`}</td>` +
+            `<td>${cameraName(a.camera_id)}</td>` +
+            `<td>${t(a.violation)}</td>` +
+            `<td><span class="chip ${a.severity}">${t(a.severity)}</span></td>` +
+            `<td class="frame-cell">${a.snapshot_url ? "" : "-"}</td>` +
+            `<td>${ackControl(a)}</td>`;
+          tbody.appendChild(row);
+          if (a.snapshot_url) showAlertFrame(row.children[4], a.snapshot_url);
+        });
+      }
+
+      document.addEventListener("click", async function (e) {
+        const btn = e.target.closest("[data-ack]");
+        if (!btn) return;
+        btn.disabled = true;
+        try {
+          await ackAlert(btn.dataset.ack);
+          renderAll();
+        } catch (err) {
+          if (err.status === 401) return logout();
+          btn.disabled = false;
+          alert(t("apiError"));
+        }
+      });
+
+      async function renderAll() {
+        try {
+          if (hasPermission("view_stats")) {
+            const [stats, cams] = await Promise.all([getStatistics(), getCameras()]);
+            cameraList = cams;
+            renderKpis(stats);
+            renderCameras();
+          }
+          if (hasPermission("view_alerts")) {
+            latestAlerts = await getAlerts();
+            renderAlertCards();
+            renderAlertTable();
+            renderLive();
+          }
+        } catch (e) {
+          if (e.status === 401) return logout();
+          status.textContent = t("apiError");
+        }
+      }
+
+      function refreshAll() {
+        renderAll();
+        renderCharts();
+        renderReports();
+      }
+
+      // ---------- Start ----------
+      function renderTexts() {
+        document.getElementById("viewTitle").textContent = t(VIEW_TITLES[currentView]);
+        renderClock();
+        renderStatus();
+        renderUser();
+      }
+
       document.addEventListener("langchange", function () {
         if (lastResult && loadedImg) {
           drawResult(loadedImg, lastResult.detections);
           showResultText();
         } else if (!input.files[0]) {
-          status.textContent = t("chooseImage");
+          status.textContent = "";
         }
         if (hasPermission("check_image")) checkModel();
-        renderUser();
+        renderTexts();
         renderUsers();
-        renderReports();
-        renderAll();
-        renderCharts();
+        refreshAll();
       });
+
+      showView(location.hash.slice(1));
+      renderTexts();
       if (hasPermission("check_image")) checkModel();
-      renderUser();
       renderUsers();
-      renderReports();
-      renderAll();
-      renderCharts();
+      refreshAll();
       loadBiReport();
-      setInterval(function () {
-        renderReports();
-        renderAll();
-        renderCharts();
-      }, 30000);
+      setInterval(renderClock, 30000);
+      setInterval(refreshAll, 30000);
+
       if (hasPermission("view_alerts")) {
         connectAlerts(function (msg) {
-          newAlertIds = new Set(msg.alerts.map(function (a) { return a.id; }));
-          renderAll();
-          renderCharts();
-          renderReports();
+          if (msg.type === "violation") newAlertIds.add(msg.alert_id);
+          refreshAll();
           setTimeout(function () {
             newAlertIds = new Set();
             document.querySelectorAll(".alert-new").forEach(function (r) {
               r.classList.remove("alert-new");
             });
           }, 5000);
-        }, logout);
+        }, logout, function (connected) {
+          liveConnected = connected;
+          renderStatus();
+        });
+      } else {
+        document.getElementById("statusPill").hidden = true;
       }
 </script>
   </body>

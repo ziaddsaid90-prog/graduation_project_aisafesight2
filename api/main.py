@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import io
+import json
 import os
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
-from fastapi import (Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile,
-                     WebSocket, WebSocketDisconnect)
+from fastapi import (APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response,
+                     UploadFile, WebSocket, WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from ultralytics import YOLO
 
+from api import live
 from api.auth import ROLE_PERMISSIONS, Auth, user_payload
 from api.reports import Reports
 from api.translator import Translator
@@ -26,12 +31,11 @@ if not SEED_FILE.exists():
 CAMERAS = int(os.environ.get("SAFESIGHT_CAMERAS", 1))
 FRONTEND_URL = os.environ.get("SAFESIGHT_FRONTEND_URL", "http://127.0.0.1:5500/Frontend")
 BI_REPORT = Path(os.environ.get("SAFESIGHT_BI_REPORT", ROOT / "powerbi" / "AI_SafeSight_CHV.pdf"))
-
-SEVERITY = {"no_helmet": "high", "chain_open": "high", "no_vest": "medium"}
-PPE_PAIRS = [("helmet", "no_helmet"), ("vest", "no_vest")]
+INGEST_KEY = os.environ.get("SAFESIGHT_INGEST_KEY", "")
 CONF_THRESHOLD = float(os.environ.get("SAFESIGHT_CONF", 0.4))
-TRACK_GAP = int(os.environ.get("SAFESIGHT_TRACK_GAP", 10))  # seconds before a lost violation counts as new
-TRACK_IOU = 0.3
+CAMERA_ONLINE_MINUTES = 10
+PERSON_LABELS = {"person"}
+HEAD_LABELS = {"helmet", "no_helmet", "blue_helmet", "red_helmet", "white_helmet", "yellow_helmet"}
 
 
 def find_weights() -> Path:
@@ -45,10 +49,10 @@ def find_weights() -> Path:
 
 WEIGHTS = find_weights()
 model = YOLO(str(WEIGHTS))
-IS_PPE_MODEL = any(name in SEVERITY for name in model.names.values())
+IS_PPE_MODEL = any(name in live.SEVERITY for name in model.names.values())
 if not IS_PPE_MODEL:
-    print(f"WARNING: {WEIGHTS.name} has no PPE classes (it is the stock COCO model). "
-          "Detection works but will never report violations until a trained best.pt exists.")
+    print(f"WARNING: {WEIGHTS.name} has no violation classes. /api/detect works but will not report violations; "
+          "live violations come from the pipeline through /api/ingest/events.")
 
 
 def db() -> sqlite3.Connection:
@@ -58,158 +62,43 @@ def db() -> sqlite3.Connection:
     return conn
 
 
-def init_db() -> None:
+SNAPSHOT_DIR = Path(os.environ.get("SAFESIGHT_SNAPSHOTS", ROOT / "api" / "snapshots"))
+
+
+def init_db() -> Reports:
     with db() as conn:
+        # Raw log of every box /api/detect found (local time); the dashboard reads events/daily_stats.
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS detections (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT    NOT NULL,
-                camera     INTEGER NOT NULL,
+                camera     TEXT    NOT NULL,
                 label      TEXT    NOT NULL,
                 confidence REAL    NOT NULL,
                 severity   TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_detections_created ON detections(created_at);
-
-            CREATE TABLE IF NOT EXISTS cameras (
-                id         INTEGER PRIMARY KEY,
-                name       TEXT    NOT NULL,
-                location   TEXT,
-                active     INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT    NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS tracks (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                camera     INTEGER NOT NULL REFERENCES cameras(id),
-                label      TEXT    NOT NULL,
-                first_seen TEXT    NOT NULL,
-                last_seen  TEXT    NOT NULL,
-                hits       INTEGER NOT NULL DEFAULT 1,
-                x1 REAL, y1 REAL, x2 REAL, y2 REAL
-            );
-            CREATE INDEX IF NOT EXISTS idx_tracks_open ON tracks(camera, label, last_seen);
-
-            CREATE TABLE IF NOT EXISTS alerts (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at   TEXT    NOT NULL,
-                camera       INTEGER NOT NULL REFERENCES cameras(id),
-                track_id     INTEGER REFERENCES tracks(id),
-                label        TEXT    NOT NULL,
-                severity     TEXT    NOT NULL,
-                confidence   REAL
-            );
-
-            CREATE TABLE IF NOT EXISTS daily_stats (
-                day    TEXT    NOT NULL,
-                camera INTEGER NOT NULL,
-                label  TEXT    NOT NULL,
-                count  INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (day, camera, label)
-            );
         """)
-        if "track_id" not in [r["name"] for r in conn.execute("PRAGMA table_info(detections)")]:
-            conn.execute("ALTER TABLE detections ADD COLUMN track_id INTEGER REFERENCES tracks(id)")
-        if "incident_id" not in [r["name"] for r in conn.execute("PRAGMA table_info(alerts)")]:
-            conn.execute("ALTER TABLE alerts ADD COLUMN incident_id INTEGER")
-
-        stamp = datetime.now().isoformat(timespec="seconds")
-        conn.executemany("INSERT OR IGNORE INTO cameras (id, name, created_at) VALUES (?, ?, ?)",
-                         [(i, f"Camera {i}", stamp) for i in range(1, CAMERAS + 1)])
-        # Fill the new tables once from detections stored before they existed
-        conn.execute("INSERT OR IGNORE INTO cameras (id, name, created_at) "
-                     "SELECT DISTINCT camera, 'Camera ' || camera, ? FROM detections", (stamp,))
-        if conn.execute("SELECT COUNT(*) FROM daily_stats").fetchone()[0] == 0:
-            conn.execute("INSERT INTO daily_stats (day, camera, label, count) "
-                         "SELECT substr(created_at, 1, 10), camera, label, COUNT(*) FROM detections GROUP BY 1, 2, 3")
-        if conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0] == 0:
-            conn.execute("INSERT INTO alerts (created_at, camera, label, severity, confidence) "
-                         "SELECT created_at, camera, label, severity, confidence FROM detections "
-                         "WHERE severity IS NOT NULL ORDER BY id")
-
-
-def link_old_alerts() -> None:
-    """Alerts stored before incident_id existed get the incident (snapshot) saved in the same /detect call."""
+    created = Reports(db, SNAPSHOT_DIR)  # creates the incidents tables before the migration reads them
     with db() as conn:
-        conn.execute("UPDATE alerts SET incident_id = (SELECT id FROM incidents i WHERE i.created_at = alerts.created_at "
-                     "AND i.camera = alerts.camera ORDER BY id LIMIT 1) WHERE incident_id IS NULL")
+        live.init_live(conn, CAMERAS)
+    return created
 
 
-def iou(a: list[float], b: list[float]) -> float:
-    w = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
-    h = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
-    inter = w * h
-    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / union if union > 0 else 0.0
-
-
-def assign_tracks(conn: sqlite3.Connection, camera: int, now: datetime, detections: list[dict]) -> list[int]:
-    """Give every violation a track. A violation that matches a track seen on the same camera in the
-    last TRACK_GAP seconds (same label, boxes overlap) continues it; otherwise it starts a new track.
-    Returns the ids of the new tracks - only those raise an alert, so one worker without a helmet
-    standing in front of the camera is one alert, not one per frame."""
-    stamp = now.isoformat(timespec="seconds")
-    since = (now - timedelta(seconds=TRACK_GAP)).isoformat(timespec="seconds")
-    used: set[int] = set()
-    new_tracks = []
-    for d in detections:
-        if not d["severity"]:
-            continue
-        open_tracks = conn.execute(
-            "SELECT id, x1, y1, x2, y2 FROM tracks WHERE camera = ? AND label = ? AND last_seen >= ?",
-            (camera, d["label"], since)).fetchall()
-        best, best_iou = None, TRACK_IOU
-        for t in open_tracks:
-            overlap = iou(d["box"], [t["x1"], t["y1"], t["x2"], t["y2"]])
-            if t["id"] not in used and overlap >= best_iou:
-                best, best_iou = t["id"], overlap
-        if best is None:
-            best = conn.execute(
-                "INSERT INTO tracks (camera, label, first_seen, last_seen, x1, y1, x2, y2) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (camera, d["label"], stamp, stamp, *d["box"])).lastrowid
-            new_tracks.append(best)
-        else:
-            conn.execute("UPDATE tracks SET last_seen = ?, hits = hits + 1, x1 = ?, y1 = ?, x2 = ?, y2 = ? WHERE id = ?",
-                         (stamp, *d["box"], best))
-        used.add(best)
-        d["track_id"] = best
-    return new_tracks
-
-
-def alert_payload(row: sqlite3.Row) -> dict:
-    return {"id": row["id"], "time": row["created_at"][11:16], "date": row["created_at"][:10],
-            "camera": row["camera"], "violation": row["label"], "level": row["severity"],
-            "hasFrame": row["incident_id"] is not None}
-
-
-class AlertHub:
-    """Dashboards connected to /ws/alert; /detect pushes new alerts to all of them."""
-
-    def __init__(self):
-        self.clients: set[WebSocket] = set()
-
-    async def broadcast(self, message: dict) -> None:
-        for ws in list(self.clients):
-            try:
-                await ws.send_json(message)
-            except Exception:
-                self.clients.discard(ws)
-
-
-hub = AlertHub()
-
-
-init_db()
+reports = init_db()
+(SNAPSHOT_DIR / "events").mkdir(parents=True, exist_ok=True)
 auth = Auth(db, SEED_FILE)
-reports = Reports(db, Path(os.environ.get("SAFESIGHT_SNAPSHOTS", ROOT / "api" / "snapshots")))
-link_old_alerts()
 translator = Translator(db, ROOT / "api" / "translation_fixes.json")
 if os.environ.get("SAFESIGHT_TRANSLATE", "1") != "0":
     translator.preload()
+hub = live.AlertHub()
 
 app = FastAPI(title="AI SafeSight API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+api = APIRouter(prefix="/api")
 
+
+# ---------------------------------------------------------------- translation, accounts, health
 
 class TranslateBody(BaseModel):
     texts: list[str]
@@ -217,7 +106,7 @@ class TranslateBody(BaseModel):
     source: str = "en"
 
 
-@app.post("/translate")
+@api.post("/translate")
 def translate(body: TranslateBody):
     from api.translator import MAX_CHARS, MAX_TEXTS
     if len(body.texts) > MAX_TEXTS or any(len(t) > MAX_CHARS for t in body.texts):
@@ -242,12 +131,12 @@ class ResetBody(BaseModel):
     password: str = Field(min_length=8)
 
 
-@app.post("/auth/login")
+@api.post("/auth/login")
 def login(body: LoginBody):
     return auth.login(body.email, body.password)
 
 
-@app.post("/auth/logout")
+@api.post("/auth/logout")
 def logout(authorization: str = Header(default="")):
     token = authorization.partition(" ")[2]
     if token:
@@ -255,12 +144,12 @@ def logout(authorization: str = Header(default="")):
     return {"ok": True}
 
 
-@app.get("/auth/me")
+@api.get("/auth/me")
 def me(user=Depends(auth.current_user())):
     return user_payload(user)
 
 
-@app.post("/auth/forgot-password")
+@api.post("/auth/forgot-password")
 def forgot_password(body: ForgotBody):
     token = auth.create_reset_token(body.email)
     if token:
@@ -268,25 +157,141 @@ def forgot_password(body: ForgotBody):
     return {"ok": True}
 
 
-@app.post("/auth/reset-password")
+@api.post("/auth/reset-password")
 def reset_password(body: ResetBody):
     auth.reset_password(body.token, body.password)
     return {"ok": True}
 
 
-@app.get("/users")
+@api.get("/users")
 def users(user=Depends(auth.require("view_users"))):
     return auth.list_users()
 
 
-@app.get("/health")
+@api.get("/health")
 def health():
     return {"status": "ok", "weights": WEIGHTS.name, "ppe_model": IS_PPE_MODEL,
             "classes": list(model.names.values())}
 
 
-@app.post("/detect")
-async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depends(auth.require("check_image"))):
+# ---------------------------------------------------------------- pipeline -> backend
+
+def require_ingest(request: Request, x_api_key: str = Header(default="")) -> None:
+    """The live pipeline is a program, not a user. With SAFESIGHT_INGEST_KEY set it must send that key
+    in the X-API-Key header; without it, only programs on this computer may send events."""
+    if INGEST_KEY:
+        if x_api_key != INGEST_KEY:
+            raise HTTPException(status_code=401, detail="Wrong or missing X-API-Key")
+    elif request.client is None or request.client.host not in ("127.0.0.1", "::1", "localhost", "testclient"):
+        raise HTTPException(status_code=403, detail="Set SAFESIGHT_INGEST_KEY to accept events from other computers")
+
+
+class IngestEvent(BaseModel):
+    event_id: str | None = None
+    camera_id: str
+    track_id: int | None = None
+    violation: str
+    state: Literal["start", "end"] = "start"
+    ts: str
+    confidence: float | None = None
+    bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    snapshot_jpeg_base64: str | None = None
+
+
+def decode_snapshot(data: str) -> Image.Image:
+    if "," in data[:100] and data.startswith("data:"):
+        data = data.split(",", 1)[1]
+    try:
+        return Image.open(io.BytesIO(base64.b64decode(data, validate=False))).convert("RGB")
+    except (binascii.Error, UnidentifiedImageError, ValueError):
+        raise HTTPException(status_code=400, detail="snapshot_jpeg_base64 is not a valid image")
+
+
+@api.post("/ingest/events", status_code=201, dependencies=[Depends(require_ingest)])
+async def ingest_event(body: IngestEvent):
+    """Sent by the live pipeline when a violation starts, and again (same event_id) when it ends."""
+    try:
+        ts = live.to_utc(body.ts)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ts must be ISO-8601, e.g. 2026-11-23T10:15:02Z")
+    cam = live.camera_id(body.camera_id)
+
+    if body.state == "end":
+        if not body.event_id:
+            raise HTTPException(status_code=400, detail="event_id is required when state is end")
+        with db() as conn:
+            row = conn.execute("SELECT e.id, e.start_ts, a.id AS alert_id FROM events e JOIN alerts a ON a.event_id = e.id "
+                               "WHERE e.id = ?", (body.event_id,)).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="No event with this event_id")
+            conn.execute("UPDATE events SET end_ts = ? WHERE id = ?", (max(ts, row["start_ts"]), row["id"]))
+            live.ensure_camera(conn, cam, ts)
+        await hub.broadcast({"type": "event_end", "event_id": row["id"], "ts": ts})
+        return {"event_id": row["id"], "alert_id": row["alert_id"]}
+
+    if body.violation not in live.SEVERITY:
+        raise HTTPException(status_code=400, detail=f"violation must be one of {', '.join(live.CONTRACT_VIOLATIONS)}")
+    event_id = body.event_id or live.new_id()
+    with db() as conn:
+        existing = conn.execute("SELECT a.id FROM alerts a WHERE a.event_id = ?", (event_id,)).fetchone()
+    if existing:  # the pipeline re-sent a start it already sent: answer the same ids
+        return {"event_id": event_id, "alert_id": existing["id"]}
+
+    snapshot_path = incident_id = None
+    if body.snapshot_jpeg_base64:
+        image = decode_snapshot(body.snapshot_jpeg_base64)
+        snapshot_path = f"events/{event_id}.jpg"
+        image.save(SNAPSHOT_DIR / snapshot_path, quality=88)
+        det = {"label": body.violation, "confidence": body.confidence or 0.0,
+               "box": body.bbox or [0, 0, 0, 0], "severity": live.SEVERITY[body.violation]}
+        local_when = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
+        incident_id = reports.record_incident(image, [det], cam, "live pipeline", local_when)
+
+    with db() as conn:
+        live.ensure_camera(conn, cam, ts)
+        live.touch_track(conn, cam, body.track_id, ts)
+        _, alert_id = live.create_event(conn, cam=cam, track_id=body.track_id, violation=body.violation, ts=ts,
+                                        confidence=body.confidence, bbox=body.bbox, snapshot_path=snapshot_path,
+                                        incident_id=incident_id, event_id=event_id)
+        live.refresh_daily(conn, live.local_date(ts), cam)
+        row = conn.execute(live.ALERT_SELECT + " WHERE a.id = ?", (alert_id,)).fetchone()
+    await hub.broadcast(live.ws_violation(row))
+    return {"event_id": event_id, "alert_id": alert_id}
+
+
+class IngestTracks(BaseModel):
+    camera_id: str
+    ts: str
+    track_ids: list[int] = Field(default_factory=list)
+
+
+@api.post("/ingest/tracks", dependencies=[Depends(require_ingest)])
+async def ingest_tracks(body: IngestTracks):
+    """Addition to the contract: the people the pipeline currently sees (ByteTrack ids), sent every few
+    seconds. New ids count in persons_seen (needed for compliance); it also marks the camera as online."""
+    try:
+        ts = live.to_utc(body.ts)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ts must be ISO-8601")
+    cam = live.camera_id(body.camera_id)
+    with db() as conn:
+        live.ensure_camera(conn, cam, ts)
+        before = conn.execute("SELECT COUNT(*) FROM tracks WHERE camera_id = ?", (cam,)).fetchone()[0]
+        for tid in body.track_ids:
+            live.touch_track(conn, cam, tid, ts)
+        new = conn.execute("SELECT COUNT(*) FROM tracks WHERE camera_id = ?", (cam,)).fetchone()[0] - before
+        if new:
+            live.refresh_daily(conn, live.local_date(ts), cam)
+    if new:
+        await hub.broadcast({"type": "stats", "camera_id": cam, "ts": ts})
+    return {"ok": True, "new_tracks": new}
+
+
+# ---------------------------------------------------------------- manual image check
+
+@api.post("/detect")
+async def detect(file: UploadFile = File(...), camera: str = Form("cam1"), user=Depends(auth.require("check_image"))):
+    """Check one image by hand. Every violation in it becomes an event + alert, like the live pipeline."""
     try:
         image = Image.open(io.BytesIO(await file.read())).convert("RGB")
     except UnidentifiedImageError:
@@ -294,7 +299,8 @@ async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depen
 
     result = model(image, conf=CONF_THRESHOLD, verbose=False)[0]
     when = datetime.now()
-    now = when.isoformat(timespec="seconds")
+    ts = live.to_utc(when.isoformat(timespec="seconds"))
+    cam = live.camera_id(camera)
 
     detections = []
     for box in result.boxes:
@@ -303,44 +309,199 @@ async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depen
             "label": label,
             "confidence": round(float(box.conf), 2),
             "box": [round(v) for v in box.xyxy[0].tolist()],
-            "severity": SEVERITY.get(label),
+            "severity": live.SEVERITY.get(label),
         })
+    violations = [d for d in detections if d["severity"]]
+    persons = sum(d["label"] in PERSON_LABELS for d in detections) or sum(d["label"] in HEAD_LABELS for d in detections)
 
-    incident_id = reports.record_incident(image, detections, camera, WEIGHTS.name, when)
+    incident_id = reports.record_incident(image, detections, cam, WEIGHTS.name, when)
+    snapshot = None
+    if incident_id is not None:
+        with db() as conn:
+            snapshot = conn.execute("SELECT snapshot FROM incidents WHERE id = ?", (incident_id,)).fetchone()[0]
 
     with db() as conn:
-        conn.execute("INSERT OR IGNORE INTO cameras (id, name, created_at) VALUES (?, ?, ?)",
-                     (camera, f"Camera {camera}", now))
-        new_tracks = set(assign_tracks(conn, camera, when, detections))
+        live.ensure_camera(conn, cam, ts)
         conn.executemany(
-            "INSERT INTO detections (created_at, camera, label, confidence, severity, track_id) VALUES (?, ?, ?, ?, ?, ?)",
-            [(now, camera, d["label"], d["confidence"], d["severity"], d.get("track_id")) for d in detections],
-        )
-        conn.executemany(
-            "INSERT INTO daily_stats (day, camera, label, count) VALUES (?, ?, ?, 1) "
-            "ON CONFLICT (day, camera, label) DO UPDATE SET count = count + 1",
-            [(now[:10], camera, d["label"]) for d in detections],
-        )
-        alert_ids = [conn.execute(
-            "INSERT INTO alerts (created_at, camera, track_id, label, severity, confidence, incident_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (now, camera, d["track_id"], d["label"], d["severity"], d["confidence"], incident_id)).lastrowid
-            for d in detections if d.get("track_id") in new_tracks]
-        new_alerts = [alert_payload(r) for r in conn.execute(
-            f"SELECT * FROM alerts WHERE id IN ({','.join('?' * len(alert_ids))}) ORDER BY id DESC", alert_ids)]
+            "INSERT INTO detections (created_at, camera, label, confidence, severity) VALUES (?, ?, ?, ?, ?)",
+            [(when.isoformat(timespec="seconds"), cam, d["label"], d["confidence"], d["severity"]) for d in detections])
+        for _ in range(max(persons, len(violations))):
+            live.touch_track(conn, cam, None, ts)
+        alert_ids = []
+        for d in violations:
+            event_id, alert_id = live.create_event(conn, cam=cam, track_id=None, violation=d["label"], ts=ts,
+                                                   confidence=d["confidence"], bbox=d["box"], snapshot_path=snapshot,
+                                                   incident_id=incident_id)
+            conn.execute("UPDATE events SET end_ts = start_ts WHERE id = ?", (event_id,))
+            alert_ids.append(alert_id)
+        if detections:
+            live.refresh_daily(conn, live.local_date(ts), cam)
+        rows = [conn.execute(live.ALERT_SELECT + " WHERE a.id = ?", (a,)).fetchone() for a in alert_ids]
 
-    if detections:
-        await hub.broadcast({"type": "detections", "camera": camera, "alerts": new_alerts})
-
+    for row in rows:
+        await hub.broadcast(live.ws_violation(row))
+    if detections and not rows:
+        await hub.broadcast({"type": "stats", "camera_id": cam, "ts": ts})
     return {"width": image.width, "height": image.height, "detections": detections, "incident_id": incident_id}
 
 
-@app.get("/incidents")
+# ---------------------------------------------------------------- dashboard -> backend (REST)
+
+def time_range(from_: str | None, to: str | None) -> tuple[str, str, str, str]:
+    """from/to as local dates (YYYY-MM-DD, default today) or ISO times -> (from_day, to_day, utc_start, utc_end)."""
+    today = datetime.now().date().isoformat()
+    try:
+        from_day = (from_ or today)[:10]
+        to_day = (to or from_ or today)[:10]
+        start = live.to_utc(from_) if from_ and len(from_) > 10 else live.local_day_bounds(from_day)[0]
+        end = live.to_utc(to) if to and len(to) > 10 else live.local_day_bounds(to_day)[1]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="from/to must be YYYY-MM-DD or ISO-8601 times")
+    return from_day, to_day, start, end
+
+
+@api.get("/events")
+def events(from_: str | None = Query(None, alias="from"), to: str | None = None, camera: str | None = None,
+           violation: str | None = None, limit: int = 200, user=Depends(auth.require("view_stats"))):
+    _, _, start, end = time_range(from_, to)
+    sql = "SELECT * FROM events WHERE start_ts >= ? AND start_ts < ?"
+    args: list = [start, end]
+    if camera:
+        sql += " AND camera_id = ?"
+        args.append(live.camera_id(camera))
+    if violation:
+        sql += " AND violation = ?"
+        args.append(violation)
+    sql += " ORDER BY start_ts DESC LIMIT ?"
+    args.append(max(1, min(limit, 1000)))
+    with db() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [{"event_id": r["id"], "camera_id": r["camera_id"], "track_id": r["track_id"], "violation": r["violation"],
+             "severity": live.SEVERITY.get(r["violation"], "medium"), "start_ts": r["start_ts"], "end_ts": r["end_ts"],
+             "confidence": r["confidence"], "bbox": json.loads(r["bbox"]) if r["bbox"] else None,
+             "snapshot_url": f"/api/snapshots/{r['snapshot_path']}" if r["snapshot_path"] else None} for r in rows]
+
+
+@api.get("/alerts")
+def alerts(acknowledged: bool | None = None, camera: str | None = None, limit: int = 50,
+           user=Depends(auth.require("view_alerts"))):
+    sql, args = live.ALERT_SELECT + " WHERE 1 = 1", []
+    if acknowledged is not None:
+        sql += " AND a.acknowledged = ?"
+        args.append(int(acknowledged))
+    if camera:
+        sql += " AND e.camera_id = ?"
+        args.append(live.camera_id(camera))
+    sql += " ORDER BY e.start_ts DESC LIMIT ?"
+    args.append(max(1, min(limit, 500)))
+    with db() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [live.alert_payload(r) for r in rows]
+
+
+@api.post("/alerts/{alert_id}/ack")
+async def ack_alert(alert_id: str, user=Depends(auth.require("view_alerts"))):
+    with db() as conn:
+        found = conn.execute("SELECT acknowledged FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+        if found is None:
+            raise HTTPException(status_code=404, detail="No such alert")
+        if not found["acknowledged"]:
+            conn.execute("UPDATE alerts SET acknowledged = 1, ack_ts = ?, ack_by = ? WHERE id = ?",
+                         (live.utc_now(), user["email"], alert_id))
+        row = conn.execute(live.ALERT_SELECT + " WHERE a.id = ?", (alert_id,)).fetchone()
+    await hub.broadcast({"type": "ack", "alert_id": alert_id})
+    return live.alert_payload(row)
+
+
+@api.get("/statistics")
+def statistics(from_: str | None = Query(None, alias="from"), to: str | None = None, camera: str | None = None,
+               user=Depends(auth.require("view_stats"))):
+    from_day, to_day, start, end = time_range(from_, to)
+    cam_sql, cam_args = ("", []) if not camera else (" AND camera_id = ?", [live.camera_id(camera)])
+    with db() as conn:
+        rows = conn.execute(f"SELECT * FROM daily_stats WHERE date >= ? AND date <= ?{cam_sql}",
+                            (from_day, to_day, *cam_args)).fetchall()
+        by_violation = dict(conn.execute(
+            f"SELECT violation, COUNT(*) FROM events WHERE start_ts >= ? AND start_ts < ?{cam_sql} GROUP BY violation",
+            (start, end, *cam_args)).fetchall())
+        active = conn.execute(
+            f"SELECT COUNT(*) FROM alerts a JOIN events e ON e.id = a.event_id WHERE a.acknowledged = 0"
+            f"{cam_sql.replace('camera_id', 'e.camera_id')}", cam_args).fetchone()[0]
+        alerts_sent = conn.execute(
+            f"SELECT COUNT(*) FROM alerts a JOIN events e ON e.id = a.event_id WHERE a.sent_ts >= ? AND a.sent_ts < ?"
+            f"{cam_sql.replace('camera_id', 'e.camera_id')}", (start, end, *cam_args)).fetchone()[0]
+    out = {"from": from_day, "to": to_day, "camera": live.camera_id(camera) if camera else None}
+    out.update(live.combine(rows))
+    out["violations"] = sum(by_violation.values())
+    out["by_violation"] = {k: by_violation.get(k, 0) for k in live.CONTRACT_VIOLATIONS}
+    out["by_violation"].update({k: n for k, n in by_violation.items() if k not in live.CONTRACT_VIOLATIONS})
+    out["active_alerts"] = active
+    out["alerts_sent"] = alerts_sent
+    return out
+
+
+@api.get("/cameras")
+def cameras(user=Depends(auth.require("view_stats"))):
+    """online = sent something in the last CAMERA_ONLINE_MINUTES. last_snapshot_url = newest violation frame."""
+    online_since = live.to_utc((datetime.now() - timedelta(minutes=CAMERA_ONLINE_MINUTES)).isoformat(timespec="seconds"))
+    with db() as conn:
+        rows = conn.execute("""
+            SELECT c.*, (SELECT snapshot_path FROM events e WHERE e.camera_id = c.id AND e.snapshot_path IS NOT NULL
+                         ORDER BY start_ts DESC LIMIT 1) AS last_snapshot
+            FROM cameras c ORDER BY length(c.id), c.id""").fetchall()
+    return [{"id": r["id"], "name": r["name"], "location": r["location"], "stream_url": r["stream_url"],
+             "active": bool(r["active"]), "last_seen": r["last_seen"],
+             "online": bool(r["active"] and r["last_seen"] and r["last_seen"] >= online_since),
+             "last_snapshot_url": f"/api/snapshots/{r['last_snapshot']}" if r["last_snapshot"] else None} for r in rows]
+
+
+@api.get("/snapshots/{file:path}")
+def snapshot(file: str, user=Depends(auth.require("view_alerts"))):
+    path = (SNAPSHOT_DIR / file).resolve()
+    if SNAPSHOT_DIR.resolve() not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="No such snapshot")
+    return Response(path.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@api.get("/analytics")
+def analytics(days: int = 7, user=Depends(auth.require("view_stats"))):
+    """Addition to the contract: the series the dashboard charts need, in one call."""
+    days = max(1, min(days, 90))
+    today = datetime.now().date()
+    day_list = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    range_start = live.local_day_bounds(day_list[0])[0]
+    today_start, today_end = live.local_day_bounds(today.isoformat())
+    with db() as conn:
+        hourly = dict(conn.execute(
+            "SELECT CAST(strftime('%H', start_ts, 'localtime') AS INTEGER), COUNT(*) FROM events "
+            "WHERE start_ts >= ? AND start_ts < ? GROUP BY 1", (today_start, today_end)).fetchall())
+        rows = conn.execute("SELECT * FROM daily_stats WHERE date >= ?", (day_list[0],)).fetchall()
+        by_type = dict(conn.execute("SELECT violation, COUNT(*) FROM events WHERE start_ts >= ? GROUP BY violation",
+                                    (range_start,)).fetchall())
+    per_day: dict[str, list] = {}
+    for r in rows:
+        per_day.setdefault(r["date"], []).append(r)
+    totals = [live.combine(per_day.get(d, [])) for d in day_list]
+    types = {k: by_type.get(k, 0) for k in live.CONTRACT_VIOLATIONS}
+    types.update({k: n for k, n in by_type.items() if k not in live.CONTRACT_VIOLATIONS})
+    return {
+        "hours": list(range(24)),
+        "violationsByHour": [hourly.get(h, 0) for h in range(24)],
+        "days": day_list,
+        "violationsByDay": [t["violations"] for t in totals],
+        "complianceByDay": [round(100 * t["safety_index"], 1) if t["safety_index"] is not None else None for t in totals],
+        "violationsByType": types,
+    }
+
+
+# ---------------------------------------------------------------- reports
+
+@api.get("/incidents")
 def incidents(limit: int = 50, user=Depends(auth.require("view_reports"))):
     return reports.list_incidents(limit)
 
 
-@app.get("/incidents/{incident_id}/report.pdf")
+@api.get("/incidents/{incident_id}/report.pdf")
 def incident_report(incident_id: int, lang: str = "ar", user=Depends(auth.require("view_reports"))):
     pdf = reports.build_pdf(incident_id, lang)
     if pdf is None:
@@ -350,7 +511,7 @@ def incident_report(incident_id: int, lang: str = "ar", user=Depends(auth.requir
                     headers={"Content-Disposition": f'inline; filename="{filename}"'})
 
 
-@app.get("/bi-report")
+@api.get("/bi-report")
 def bi_report(user=Depends(auth.require("view_reports"))):
     if not BI_REPORT.exists():
         raise HTTPException(status_code=404, detail=f"Export the Power BI report to {BI_REPORT.name} first")
@@ -358,29 +519,16 @@ def bi_report(user=Depends(auth.require("view_reports"))):
                     headers={"Content-Disposition": f'inline; filename="{BI_REPORT.name}"'})
 
 
-@app.get("/alerts")
-def alerts(limit: int = 20, user=Depends(auth.require("view_alerts"))):
-    with db() as conn:
-        rows = conn.execute("SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-    return [alert_payload(r) for r in rows]
+app.include_router(api)
 
 
-@app.get("/alerts/{alert_id}/frame.jpg")
-def alert_frame(alert_id: int, user=Depends(auth.require("view_alerts"))):
-    """The camera frame of the alert with the boxes drawn (the incident snapshot saved by /detect)."""
-    with db() as conn:
-        row = conn.execute("SELECT i.snapshot FROM alerts a JOIN incidents i ON i.id = a.incident_id "
-                           "WHERE a.id = ?", (alert_id,)).fetchone()
-    path = reports.snapshot_dir / row["snapshot"] if row else None
-    if path is None or not path.exists():
-        raise HTTPException(status_code=404, detail="No frame for this alert")
-    return Response(path.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+# ---------------------------------------------------------------- backend -> dashboard (WebSocket)
 
-
-@app.websocket("/ws/alert")
-async def ws_alert(ws: WebSocket):
-    """Live alerts. The browser cannot send an Authorization header on a WebSocket, so the first
-    message must be {"token": "..."}; the token is not put in the URL so it never lands in logs.
+@app.websocket("/ws/alerts")
+async def ws_alerts(ws: WebSocket):
+    """Live messages: {"type": "violation", ...}, {"type": "event_end", ...}, {"type": "stats", ...}, {"type": "ack", ...}.
+    The browser cannot send an Authorization header on a WebSocket, so the first message must be
+    {"token": "..."} (not in the URL, so it never lands in logs).
     Close codes: 4401 not signed in / session expired, 4403 role has no view_alerts."""
     await ws.accept()
     try:
@@ -401,57 +549,3 @@ async def ws_alert(ws: WebSocket):
         pass
     finally:
         hub.clients.discard(ws)
-
-
-@app.get("/stats")
-def stats(user=Depends(auth.require("view_stats"))):
-    today = datetime.now().date().isoformat()
-    with db() as conn:
-        cameras = conn.execute("SELECT COUNT(*) FROM cameras WHERE active = 1").fetchone()[0]
-        counts = dict(conn.execute(
-            "SELECT label, SUM(count) FROM daily_stats WHERE day = ? GROUP BY label", (today,)
-        ).fetchall())
-
-    violations = sum(n for label, n in counts.items() if label in SEVERITY)
-    worn = sum(counts.get(ok, 0) for ok, _ in PPE_PAIRS)
-    missing = sum(counts.get(bad, 0) for _, bad in PPE_PAIRS)
-    compliance = round(100 * worn / (worn + missing)) if worn + missing else 100
-    return {"cameras": cameras, "violationsToday": violations, "compliance": compliance}
-
-
-@app.get("/analytics")
-def analytics(days: int = 7, user=Depends(auth.require("view_stats"))):
-    days = max(1, min(days, 90))
-    now = datetime.now()
-    today = now.date()
-    start = (today - timedelta(days=days - 1)).isoformat()
-    with db() as conn:
-        hourly = dict(conn.execute(
-            "SELECT CAST(substr(created_at, 12, 2) AS INTEGER), COUNT(*) FROM detections "
-            "WHERE severity IS NOT NULL AND created_at >= ? GROUP BY 1", (today.isoformat(),)).fetchall())
-        daily_rows = conn.execute(
-            "SELECT day, label, SUM(count) FROM daily_stats WHERE day >= ? GROUP BY day, label", (start,)).fetchall()
-        by_type = dict(conn.execute(
-            "SELECT label, COUNT(*) FROM detections WHERE severity IS NOT NULL AND created_at >= ? GROUP BY label",
-            (start,)).fetchall())
-
-    per_day: dict[str, dict[str, int]] = {}
-    for d, label, n in daily_rows:
-        per_day.setdefault(d, {})[label] = n
-    day_list = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
-    violations_by_day, compliance_by_day = [], []
-    for d in day_list:
-        counts = per_day.get(d, {})
-        violations_by_day.append(sum(n for label, n in counts.items() if label in SEVERITY))
-        worn = sum(counts.get(ok, 0) for ok, _ in PPE_PAIRS)
-        missing = sum(counts.get(bad, 0) for _, bad in PPE_PAIRS)
-        compliance_by_day.append(round(100 * worn / (worn + missing), 1) if worn + missing else None)
-
-    return {
-        "hours": list(range(24)),
-        "violationsByHour": [hourly.get(h, 0) for h in range(24)],
-        "days": day_list,
-        "violationsByDay": violations_by_day,
-        "complianceByDay": compliance_by_day,
-        "violationsByType": {label: by_type.get(label, 0) for label in SEVERITY},
-    }

@@ -1,7 +1,8 @@
 const USE_MOCK = false;
 const API_URL = "http://127.0.0.1:8000";
+const API_BASE = API_URL + "/api"; // REST paths follow docs/api_contracts.md
 
-const VIOLATION_CLASSES = ["no_helmet", "no_vest", "chain_open"];
+const VIOLATION_CLASSES = ["no_helmet", "no_vest", "no_helmet_no_vest", "chain_open"];
 
 async function getJson(path, options) {
   options = options || {};
@@ -12,7 +13,7 @@ async function getJson(path, options) {
       options.headers,
     );
   }
-  const res = await fetch(API_URL + path, options);
+  const res = await fetch(API_BASE + path, options);
   if (!res.ok) {
     const err = new Error("HTTP " + res.status);
     err.status = res.status;
@@ -128,26 +129,51 @@ async function getAnalytics(days) {
       days: dayList,
       violationsByDay: dayList.map(function (_, i) { return 8 + ((i * 7) % 11); }),
       complianceByDay: dayList.map(function (_, i) { return 70 + ((i * 5) % 20); }),
-      violationsByType: { no_helmet: 26, no_vest: 18, chain_open: 3 },
+      violationsByType: { no_helmet: 26, no_vest: 18, no_helmet_no_vest: 3 },
     };
   }
   return getJson("/analytics?days=" + days);
 }
 
-async function getStats() {
-  if (USE_MOCK) return { cameras: 4, violationsToday: 12, compliance: 87 };
-  return getJson("/stats");
+// Today's statistics: persons_seen, helmet/vest compliance and safety_index (0-1), violations,
+// by_violation, active_alerts (not acknowledged), alerts_sent
+async function getStatistics(from, to) {
+  if (USE_MOCK) {
+    return { persons_seen: 40, helmet_compliance: 0.85, vest_compliance: 0.9, safety_index: 0.8625, violations: 12,
+             by_violation: { no_helmet: 6, no_vest: 4, no_helmet_no_vest: 2 }, active_alerts: 3, alerts_sent: 12 };
+  }
+  const q = [];
+  if (from) q.push("from=" + encodeURIComponent(from));
+  if (to) q.push("to=" + encodeURIComponent(to));
+  return getJson("/statistics" + (q.length ? "?" + q.join("&") : ""));
 }
 
-async function getAlerts() {
+async function getCameras() {
   if (USE_MOCK) {
+    return [1, 2, 3, 4].map(function (n) {
+      return { id: "cam" + n, name: "Camera " + n, location: null, active: true, last_seen: null, online: n < 4,
+               last_snapshot_url: null };
+    });
+  }
+  return getJson("/cameras");
+}
+
+async function getAlerts(acknowledged) {
+  if (USE_MOCK) {
+    const now = Date.now();
     return [
-      { time: "10:15", camera: 1, violation: "no_helmet", level: "high" },
-      { time: "10:32", camera: 3, violation: "no_vest", level: "medium" },
-      { time: "11:05", camera: 2, violation: "chain_open", level: "high" },
+      { alert_id: "a1", camera_id: "cam1", violation: "no_helmet", severity: "high", ts: new Date(now - 6e5).toISOString(),
+        end_ts: null, acknowledged: false, snapshot_url: null },
+      { alert_id: "a2", camera_id: "cam3", violation: "no_vest", severity: "medium", ts: new Date(now - 2e6).toISOString(),
+        end_ts: new Date(now - 1.9e6).toISOString(), acknowledged: true, snapshot_url: null },
     ];
   }
-  return getJson("/alerts");
+  return getJson("/alerts?limit=50" + (acknowledged === undefined ? "" : "&acknowledged=" + acknowledged));
+}
+
+async function ackAlert(alertId) {
+  if (USE_MOCK) return { alert_id: alertId, acknowledged: true };
+  return getJson("/alerts/" + encodeURIComponent(alertId) + "/ack", { method: "POST" });
 }
 
 async function getIncidents() {
@@ -166,7 +192,7 @@ async function openIncidentReport(id, lang) {
     return;
   }
   const session = getSession();
-  const res = await fetch(API_URL + "/incidents/" + id + "/report.pdf?lang=" + lang, {
+  const res = await fetch(API_BASE + "/incidents/" + id + "/report.pdf?lang=" + lang, {
     headers: { Authorization: "Bearer " + session.token },
   });
   if (!res.ok) {
@@ -182,7 +208,7 @@ async function openIncidentReport(id, lang) {
 async function getBiReportUrl() {
   if (USE_MOCK) return null;
   const session = getSession();
-  const res = await fetch(API_URL + "/bi-report", {
+  const res = await fetch(API_BASE + "/bi-report", {
     headers: { Authorization: "Bearer " + session.token },
   });
   if (res.status === 404) return null;
@@ -217,14 +243,16 @@ async function detectImage(file) {
   return getJson("/detect", { method: "POST", body: form });
 }
 
-// Live alerts over WebSocket. onMessage gets {type: "detections", camera, alerts: [...]} every time
-// /detect saves something; onExpired runs when the session is no longer valid.
-// Reconnects by itself (1s, 2s, 4s ... up to 30s) if the API restarts.
-function connectAlerts(onMessage, onExpired) {
-  if (USE_MOCK) return;
+// Live messages over the WebSocket /ws/alerts (docs/api_contracts.md): onMessage gets
+// {type: "violation", alert_id, ...}, {type: "event_end", ...}, {type: "stats", ...} or {type: "ack", ...};
+// onExpired runs when the session is no longer valid; onStatus(true/false) says whether the live
+// connection is up. Reconnects by itself (1s, 2s, 4s ... up to 30s).
+function connectAlerts(onMessage, onExpired, onStatus) {
+  onStatus = onStatus || function () {};
+  if (USE_MOCK) return onStatus(true);
   const session = getSession();
   if (!session) return;
-  const url = API_URL.replace(/^http/, "ws") + "/ws/alert";
+  const url = API_URL.replace(/^http/, "ws") + "/ws/alerts";
   let retry = 1000;
   function open() {
     const ws = new WebSocket(url);
@@ -233,10 +261,13 @@ function connectAlerts(onMessage, onExpired) {
     };
     ws.onmessage = function (e) {
       const msg = JSON.parse(e.data);
-      if (msg.type === "ready") retry = 1000;
-      else onMessage(msg);
+      if (msg.type === "ready") {
+        retry = 1000;
+        onStatus(true);
+      } else onMessage(msg);
     };
     ws.onclose = function (e) {
+      onStatus(false);
       if (e.code === 4401) return onExpired();
       if (e.code === 4403) return;
       setTimeout(open, retry);
@@ -246,12 +277,12 @@ function connectAlerts(onMessage, onExpired) {
   open();
 }
 
-// The violation frame (camera image with boxes) of one alert, as an object URL for <img src>.
-// Cached per alert because the alerts table is redrawn on every refresh.
-const alertFrameCache = new Map();
-async function getAlertFrameUrl(id) {
-  if (alertFrameCache.has(id)) return alertFrameCache.get(id);
-  const res = await fetch(API_URL + "/alerts/" + id + "/frame.jpg", {
+// A snapshot (snapshot_url from the API, e.g. "/api/snapshots/....jpg") as an object URL for <img src>.
+// The request needs the login token, so it can't be a plain <img src>. Cached because lists redraw often.
+const snapshotCache = new Map();
+async function getSnapshotUrl(snapshotUrl) {
+  if (snapshotCache.has(snapshotUrl)) return snapshotCache.get(snapshotUrl);
+  const res = await fetch(API_URL + snapshotUrl, {
     headers: { Authorization: "Bearer " + getSession().token },
   });
   if (!res.ok) {
@@ -260,6 +291,6 @@ async function getAlertFrameUrl(id) {
     throw err;
   }
   const url = URL.createObjectURL(await res.blob());
-  alertFrameCache.set(id, url);
+  snapshotCache.set(snapshotUrl, url);
   return url;
 }
