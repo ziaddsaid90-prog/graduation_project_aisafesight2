@@ -173,7 +173,6 @@ function setText(id, text) {
   if (el) el.textContent = text;
 }
 
-// Small line in a KPI card (SVG, no Chart.js): the series scaled to the box
 function drawSpark(id, values) {
   const svg = document.getElementById(id);
   if (!svg) return;
@@ -196,7 +195,6 @@ function drawSpark(id, values) {
   svg.innerHTML = '<polyline fill="none" stroke-width="2" vector-effect="non-scaling-stroke" points="' + points.join(" ") + '"/>';
 }
 
-// The overview page: trend chart, safety score ring, top violations, site statistics
 function renderOverviewCharts(data) {
   const avgCompliance = average(data.complianceByDay);
   const todayCompliance = data.complianceByDay[data.complianceByDay.length - 1];

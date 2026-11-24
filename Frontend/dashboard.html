@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI SafeSight</title>
     <link rel="icon" href="logo.svg" />
-    <!-- ?v=... makes browsers load the new file instead of an old cached copy: change it (in every page) whenever a .css/.js file changes -->
-    <link rel="stylesheet" href="style.css?v=20261124c" />
-    <link rel="stylesheet" href="dashboard.css?v=20261124c" />
-    <script src="auth.js?v=20261124c"></script>
+    <link rel="stylesheet" href="style.css?v=20261124d" />
+    <link rel="stylesheet" href="dashboard.css?v=20261124d" />
+    <script src="auth.js?v=20261124d"></script>
     <script>
       if (!getSession()) window.location.replace("index.html");
       protectFromBackButton();
@@ -82,7 +81,6 @@
         </header>
 
         <main class="content">
-          <!-- ============ Overview ============ -->
           <section class="view" data-view="overview">
             <div class="kpis" data-permission="view_stats">
               <div class="kpi">
@@ -171,7 +169,6 @@
             </div>
           </section>
 
-          <!-- ============ Check image ============ -->
           <section class="view" data-view="check" data-permission="check_image" hidden>
             <div class="panel">
               <p id="modelNotice" class="notice" hidden></p>
@@ -185,7 +182,6 @@
             </div>
           </section>
 
-          <!-- ============ Alerts ============ -->
           <section class="view" data-view="alerts" data-permission="view_alerts" hidden>
             <div class="panel table-panel">
               <table>
@@ -204,7 +200,6 @@
             </div>
           </section>
 
-          <!-- ============ Analytics ============ -->
           <section class="view" data-view="analytics" data-permission="view_stats" hidden>
             <div class="panel">
               <div class="panel-head">
@@ -236,7 +231,6 @@
             </div>
           </section>
 
-          <!-- ============ Reports ============ -->
           <section class="view" data-view="reports" data-permission="view_reports" hidden>
             <div class="panel">
               <div class="panel-head">
@@ -265,7 +259,6 @@
             </div>
           </section>
 
-          <!-- ============ Users ============ -->
           <section class="view" data-view="users" data-permission="view_users" hidden>
             <div class="panel table-panel">
               <table>
@@ -288,14 +281,13 @@
       <img id="frameViewImg" alt="" />
     </div>
 
-    <script src="i18n.js?v=20261124c"></script>
-    <script src="api.js?v=20261124c"></script>
+    <script src="i18n.js?v=20261124d"></script>
+    <script src="api.js?v=20261124d"></script>
     <script src="vendor/chart.umd.min.js"></script>
-    <script src="charts.js?v=20261124c"></script>
+    <script src="charts.js?v=20261124d"></script>
     <script>
       const session = requireAuth();
 
-      // ---------- Views (sidebar) ----------
       const VIEW_TITLES = {
         overview: "safetyOverview", check: "checkImage", alerts: "navAlerts",
         analytics: "analytics", reports: "navReports", users: "users",
@@ -337,7 +329,6 @@
         showView(location.hash.slice(1));
       });
 
-      // ---------- Header: clock + connection status ----------
       function renderClock() {
         const locale = currentLang === "ar" ? "ar-EG-u-nu-latn" : "en-GB";
         const now = new Date();
@@ -385,7 +376,6 @@
         return currentLang === "ar" ? "ar-EG-u-nu-latn" : "en-GB";
       }
 
-      // ts from the API is UTC ("2026-11-23T10:15:02Z"); the browser shows it in local time
       function tsTime(ts) {
         return new Date(ts).toLocaleTimeString(uiLocale(), { hour: "numeric", minute: "2-digit" });
       }
@@ -396,7 +386,6 @@
         });
       }
 
-      // "cam3" or 3 -> "Camera 3" / "الكاميرا 3"; other ids show the camera's name
       function cameraName(id) {
         const m = String(id).match(/^(?:cam)?(\d+)$/);
         if (m) return t("camera") + " " + m[1];
@@ -404,7 +393,6 @@
         return cam ? cam.name : String(id);
       }
 
-      // ---------- Reports ----------
       async function renderReports() {
         if (!hasPermission("view_reports")) return;
         const body = document.getElementById("reportsBody");
@@ -474,7 +462,6 @@
         }
       });
 
-      // ---------- Check an image ----------
       const input = document.getElementById("imageInput");
       const preview = document.getElementById("preview");
       const status = document.getElementById("status");
@@ -567,7 +554,6 @@
         }
       }
 
-      // ---------- Frames ----------
       function openFrame(url) {
         document.getElementById("frameViewImg").src = url;
         document.getElementById("frameView").hidden = false;
@@ -594,7 +580,6 @@
         }
       }
 
-      // ---------- Overview: KPIs, cameras, live frame, recent alerts ----------
       let newAlertIds = new Set();
       let latestAlerts = [];
       let cameraList = [];
@@ -687,7 +672,6 @@
         if (img) openFrame(img.src);
       });
 
-      // ✓ button / "Seen" label for one alert
       function ackControl(a) {
         if (a.acknowledged) return `<span class="ack-done" title="${t("acknowledged")}">✓ ${t("acknowledged")}</span>`;
         return `<button class="ack-btn" data-ack="${a.alert_id}" title="${t("ack")}" aria-label="${t("ack")}">` +
@@ -781,7 +765,6 @@
         renderReports();
       }
 
-      // ---------- Start ----------
       function renderTexts() {
         document.getElementById("viewTitle").textContent = t(VIEW_TITLES[currentView]);
         renderClock();

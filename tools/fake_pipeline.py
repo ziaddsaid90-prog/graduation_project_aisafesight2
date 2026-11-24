@@ -1,5 +1,3 @@
-"""Pretends to be the Model Team's live pipeline (docs/api_contracts.md) so the dashboard can be tested
-without a camera. Run while the API is up:  python tools/fake_pipeline.py [API_URL] [ROUNDS]"""
 import base64, io, json, random, sys, time, urllib.request, uuid
 from datetime import datetime, timezone
 from pathlib import Path

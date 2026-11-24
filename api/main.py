@@ -67,7 +67,6 @@ SNAPSHOT_DIR = Path(os.environ.get("SAFESIGHT_SNAPSHOTS", ROOT / "api" / "snapsh
 
 def init_db() -> Reports:
     with db() as conn:
-        # Raw log of every box /api/detect found (local time); the dashboard reads events/daily_stats.
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS detections (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +78,7 @@ def init_db() -> Reports:
             );
             CREATE INDEX IF NOT EXISTS idx_detections_created ON detections(created_at);
         """)
-    created = Reports(db, SNAPSHOT_DIR)  # creates the incidents tables before the migration reads them
+    created = Reports(db, SNAPSHOT_DIR)
     with db() as conn:
         live.init_live(conn, CAMERAS)
     return created
@@ -97,8 +96,6 @@ app = FastAPI(title="AI SafeSight API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 api = APIRouter(prefix="/api")
 
-
-# ---------------------------------------------------------------- translation, accounts, health
 
 class TranslateBody(BaseModel):
     texts: list[str]
@@ -174,11 +171,7 @@ def health():
             "classes": list(model.names.values())}
 
 
-# ---------------------------------------------------------------- pipeline -> backend
-
 def require_ingest(request: Request, x_api_key: str = Header(default="")) -> None:
-    """The live pipeline is a program, not a user. With SAFESIGHT_INGEST_KEY set it must send that key
-    in the X-API-Key header; without it, only programs on this computer may send events."""
     if INGEST_KEY:
         if x_api_key != INGEST_KEY:
             raise HTTPException(status_code=401, detail="Wrong or missing X-API-Key")
@@ -209,7 +202,6 @@ def decode_snapshot(data: str) -> Image.Image:
 
 @api.post("/ingest/events", status_code=201, dependencies=[Depends(require_ingest)])
 async def ingest_event(body: IngestEvent):
-    """Sent by the live pipeline when a violation starts, and again (same event_id) when it ends."""
     try:
         ts = live.to_utc(body.ts)
     except ValueError:
@@ -234,7 +226,7 @@ async def ingest_event(body: IngestEvent):
     event_id = body.event_id or live.new_id()
     with db() as conn:
         existing = conn.execute("SELECT a.id FROM alerts a WHERE a.event_id = ?", (event_id,)).fetchone()
-    if existing:  # the pipeline re-sent a start it already sent: answer the same ids
+    if existing:
         return {"event_id": event_id, "alert_id": existing["id"]}
 
     snapshot_path = incident_id = None
@@ -267,8 +259,6 @@ class IngestTracks(BaseModel):
 
 @api.post("/ingest/tracks", dependencies=[Depends(require_ingest)])
 async def ingest_tracks(body: IngestTracks):
-    """Addition to the contract: the people the pipeline currently sees (ByteTrack ids), sent every few
-    seconds. New ids count in persons_seen (needed for compliance); it also marks the camera as online."""
     try:
         ts = live.to_utc(body.ts)
     except ValueError:
@@ -287,11 +277,8 @@ async def ingest_tracks(body: IngestTracks):
     return {"ok": True, "new_tracks": new}
 
 
-# ---------------------------------------------------------------- manual image check
-
 @api.post("/detect")
 async def detect(file: UploadFile = File(...), camera: str = Form("cam1"), user=Depends(auth.require("check_image"))):
-    """Check one image by hand. Every violation in it becomes an event + alert, like the live pipeline."""
     try:
         image = Image.open(io.BytesIO(await file.read())).convert("RGB")
     except UnidentifiedImageError:
@@ -345,10 +332,7 @@ async def detect(file: UploadFile = File(...), camera: str = Form("cam1"), user=
     return {"width": image.width, "height": image.height, "detections": detections, "incident_id": incident_id}
 
 
-# ---------------------------------------------------------------- dashboard -> backend (REST)
-
 def time_range(from_: str | None, to: str | None) -> tuple[str, str, str, str]:
-    """from/to as local dates (YYYY-MM-DD, default today) or ISO times -> (from_day, to_day, utc_start, utc_end)."""
     today = datetime.now().date().isoformat()
     try:
         from_day = (from_ or today)[:10]
@@ -442,7 +426,6 @@ def statistics(from_: str | None = Query(None, alias="from"), to: str | None = N
 
 @api.get("/cameras")
 def cameras(user=Depends(auth.require("view_stats"))):
-    """online = sent something in the last CAMERA_ONLINE_MINUTES. last_snapshot_url = newest violation frame."""
     online_since = live.to_utc((datetime.now() - timedelta(minutes=CAMERA_ONLINE_MINUTES)).isoformat(timespec="seconds"))
     with db() as conn:
         rows = conn.execute("""
@@ -465,7 +448,6 @@ def snapshot(file: str, user=Depends(auth.require("view_alerts"))):
 
 @api.get("/analytics")
 def analytics(days: int = 7, user=Depends(auth.require("view_stats"))):
-    """Addition to the contract: the series the dashboard charts need, in one call."""
     days = max(1, min(days, 90))
     today = datetime.now().date()
     day_list = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
@@ -494,8 +476,6 @@ def analytics(days: int = 7, user=Depends(auth.require("view_stats"))):
     }
 
 
-# ---------------------------------------------------------------- reports
-
 @api.get("/incidents")
 def incidents(limit: int = 50, user=Depends(auth.require("view_reports"))):
     return reports.list_incidents(limit)
@@ -522,14 +502,8 @@ def bi_report(user=Depends(auth.require("view_reports"))):
 app.include_router(api)
 
 
-# ---------------------------------------------------------------- backend -> dashboard (WebSocket)
-
 @app.websocket("/ws/alerts")
 async def ws_alerts(ws: WebSocket):
-    """Live messages: {"type": "violation", ...}, {"type": "event_end", ...}, {"type": "stats", ...}, {"type": "ack", ...}.
-    The browser cannot send an Authorization header on a WebSocket, so the first message must be
-    {"token": "..."} (not in the URL, so it never lands in logs).
-    Close codes: 4401 not signed in / session expired, 4403 role has no view_alerts."""
     await ws.accept()
     try:
         first = await asyncio.wait_for(ws.receive_json(), timeout=10)

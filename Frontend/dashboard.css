@@ -1,4 +1,3 @@
-/* Dashboard (dark). Login pages use style.css only. */
 .dash {
   --bg: #0a1120;
   --panel: #0f1a2e;
@@ -20,7 +19,6 @@
 
 .app { display: flex; min-height: 100vh; }
 
-/* ---------- Sidebar ---------- */
 .sidebar {
   width: var(--sidebar-w);
   flex-shrink: 0;
@@ -100,7 +98,6 @@
 .side-logout { margin-top: 8px; }
 .side-backdrop { display: none; }
 
-/* ---------- Header ---------- */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .dash-header {
   display: flex;
@@ -133,7 +130,6 @@
 .menu-btn { display: none; background: none; border: none; color: var(--text); padding: 6px; cursor: pointer; }
 .menu-btn svg { width: 24px; height: 24px; }
 
-/* ---------- Content ---------- */
 .content { padding: 24px 28px 32px; }
 .view { display: flex; flex-direction: column; gap: 20px; }
 .panel {
@@ -152,7 +148,6 @@
 .icon-btn:hover { color: white; }
 .icon-btn svg { width: 20px; height: 20px; }
 
-/* KPI cards */
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .kpi {
   position: relative;
@@ -180,7 +175,6 @@
 .spark.green { color: var(--green); }
 .spark polyline { stroke: currentColor; }
 
-/* Cameras | live frame | recent alerts */
 .row-main { display: grid; grid-template-columns: minmax(250px, 1.1fr) minmax(0, 2fr) minmax(250px, 1.1fr); gap: 16px; }
 .camera-list { display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow-y: auto; }
 .camera-item {
@@ -267,7 +261,6 @@
 .chip.medium { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
 .chip.low { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
 
-/* Analytics | top violations | site statistics */
 .row-bottom { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; }
 .trend-wrap { display: flex; align-items: center; gap: 16px; }
 .trend-wrap .chart-box { flex: 1; min-width: 0; height: 200px; }
@@ -322,7 +315,6 @@
 #siteCommon { font-size: 16px; line-height: 1.7; }
 .site-stats span { font-size: 12px; color: var(--muted); }
 
-/* Controls */
 .chart-range, .dash select {
   background: var(--panel-2);
   color: var(--text);
@@ -360,7 +352,6 @@
 #status { color: #cbd5e1; }
 .notice { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 10px 14px; margin-top: 0; }
 
-/* Tables */
 .table-panel { overflow-x: auto; }
 .dash table { width: 100%; border-collapse: collapse; }
 .dash th, .dash td { padding: 12px; text-align: start; border-bottom: 1px solid var(--line); }
@@ -371,7 +362,6 @@
 .alert-new { animation: alert-flash 1s ease-in-out 3; }
 @keyframes alert-flash { 50% { background: rgba(239, 68, 68, 0.25); } }
 
-/* Analytics view */
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 16px; }
 .chart-card { min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
 .chart-card h3 { margin: 0 0 10px; font-size: 15px; color: #b6c3da; }
@@ -383,7 +373,6 @@
 .frame-view[hidden] { display: none; }
 .frame-view img { max-width: 92vw; max-height: 88vh; border-radius: 10px; }
 
-/* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .row-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .row-main .live-panel { grid-column: 1 / -1; order: -1; }
@@ -426,7 +415,6 @@
   .chart-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Acknowledge (contract: POST /api/alerts/{id}/ack) */
 .ack-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px; display: grid; place-items: center; }
 .ack-btn svg { width: 26px; height: 26px; }
 .ack-btn:hover { color: var(--green); }

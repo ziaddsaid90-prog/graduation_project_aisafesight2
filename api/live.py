@@ -1,8 +1,3 @@
-"""Live data from docs/api_contracts.md: cameras, tracks, events, alerts, daily_stats.
-
-Times are stored as ISO-8601 UTC strings ("2026-11-23T10:15:02Z") as the contract says; days
-(daily_stats.date, "today") are the server's local date, because a site's day is its local day.
-"""
 from __future__ import annotations
 
 import json
@@ -14,12 +9,11 @@ from typing import Callable
 
 from fastapi import WebSocket
 
-# Violation statuses (docs/class_mapping.md). chain_open is extra: only the old demo model reports it.
 SEVERITY = {"no_helmet": "high", "no_helmet_no_vest": "high", "no_vest": "medium", "chain_open": "high"}
 CONTRACT_VIOLATIONS = ("no_helmet", "no_vest", "no_helmet_no_vest")
 HELMET_MISSING = ("no_helmet", "no_helmet_no_vest")
 VEST_MISSING = ("no_vest", "no_helmet_no_vest")
-HELMET_WEIGHT, VEST_WEIGHT = 0.75, 0.25  # safety_index = 0.75 x helmet + 0.25 x vest
+HELMET_WEIGHT, VEST_WEIGHT = 0.75, 0.25
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cameras (
@@ -81,7 +75,6 @@ def utc_now() -> str:
 
 
 def to_utc(ts: str) -> str:
-    """Any ISO-8601 time -> "YYYY-MM-DDTHH:MM:SSZ". A time without a zone is taken as server local time."""
     dt = datetime.fromisoformat(ts.strip().replace("Z", "+00:00"))
     if dt.tzinfo is None:
         dt = dt.astimezone()
@@ -93,7 +86,6 @@ def local_date(ts: str) -> str:
 
 
 def local_day_bounds(day: str) -> tuple[str, str]:
-    """UTC start (inclusive) and end (exclusive) of a local calendar day."""
     start = datetime.combine(date.fromisoformat(day), datetime.min.time()).astimezone()
     end = datetime.combine(date.fromisoformat(day) + timedelta(days=1), datetime.min.time()).astimezone()
     fmt = "%Y-%m-%dT%H:%M:%SZ"
@@ -101,7 +93,6 @@ def local_day_bounds(day: str) -> tuple[str, str]:
 
 
 def camera_id(value) -> str:
-    """'1' or 1 -> 'cam1'; anything else is kept as it is."""
     text = str(value).strip()
     return f"cam{text}" if text.isdigit() else text
 
@@ -119,8 +110,6 @@ def ensure_camera(conn: sqlite3.Connection, cam: str, seen: str | None = None) -
 
 
 def touch_track(conn: sqlite3.Connection, cam: str, track_id: int | None, ts: str) -> None:
-    """A person seen by the pipeline (ByteTrack id). A manual image check has no track id: every person
-    in it is its own row. persons_seen in daily_stats counts these rows."""
     if track_id is None:
         conn.execute("INSERT INTO tracks (camera_id, track_id, first_seen, last_seen) VALUES (?, NULL, ?, ?)",
                      (cam, ts, ts))
@@ -133,8 +122,6 @@ def touch_track(conn: sqlite3.Connection, cam: str, track_id: int | None, ts: st
 
 
 def refresh_daily(conn: sqlite3.Connection, day: str, cam: str) -> None:
-    """Recompute one daily_stats row from tracks and events.
-    A person counts once per violation kind (distinct track); events without a track id count one each."""
     start, end = local_day_bounds(day)
     persons = conn.execute("SELECT COUNT(*) FROM tracks WHERE camera_id = ? AND first_seen >= ? AND first_seen < ?",
                            (cam, start, end)).fetchone()[0]
@@ -162,7 +149,6 @@ def refresh_daily(conn: sqlite3.Connection, day: str, cam: str) -> None:
 
 
 def combine(rows) -> dict:
-    """Totals and rates over several daily_stats rows (cameras and/or days)."""
     persons = sum(r["persons_seen"] for r in rows)
     helmet_v = sum(r["helmet_violations"] for r in rows)
     vest_v = sum(r["vest_violations"] for r in rows)
@@ -182,7 +168,6 @@ def new_id() -> str:
 def create_event(conn: sqlite3.Connection, *, cam: str, track_id: int | None, violation: str, ts: str,
                  confidence: float | None, bbox: list | None, snapshot_path: str | None,
                  incident_id: int | None = None, event_id: str | None = None) -> tuple[str, str]:
-    """A new violation and its alert. Returns (event_id, alert_id)."""
     event_id = event_id or new_id()
     alert_id = new_id()
     conn.execute(
@@ -213,7 +198,6 @@ def alert_payload(row: sqlite3.Row) -> dict:
 
 
 def ws_violation(row: sqlite3.Row) -> dict:
-    """The WebSocket message of the contract for a new violation."""
     p = alert_payload(row)
     return {"type": "violation", "alert_id": p["alert_id"], "event_id": p["event_id"], "camera_id": p["camera_id"],
             "track_id": p["track_id"], "violation": p["violation"], "severity": p["severity"], "ts": p["ts"],
@@ -222,7 +206,7 @@ def ws_violation(row: sqlite3.Row) -> dict:
 
 def init_live(conn: sqlite3.Connection, cameras: int) -> None:
     conn.commit()
-    conn.execute("PRAGMA foreign_keys = OFF")  # only takes effect outside a transaction
+    conn.execute("PRAGMA foreign_keys = OFF")
     drop_detections_track_column(conn)
     migrate_v1(conn)
     conn.commit()
@@ -233,7 +217,6 @@ def init_live(conn: sqlite3.Connection, cameras: int) -> None:
 
 
 def drop_detections_track_column(conn: sqlite3.Connection) -> None:
-    """The first version gave detections a track_id pointing at the old tracks table; rebuild without it."""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(detections)")]
     if "track_id" not in cols:
         return
@@ -255,8 +238,6 @@ def drop_detections_track_column(conn: sqlite3.Connection) -> None:
 
 
 def migrate_v1(conn: sqlite3.Connection) -> None:
-    """The first version of these tables (integer camera ids, alerts without events) -> contract tables.
-    Old alerts become events + alerts; old daily counts become daily_stats rows."""
     cols = {r[1]: r[2] for r in conn.execute("PRAGMA table_info(cameras)")}
     if not cols or cols.get("id", "").upper() != "INTEGER":
         return
@@ -286,7 +267,6 @@ def migrate_v1(conn: sqlite3.Connection) -> None:
                                    snapshot_path=snap, incident_id=incident)
         conn.execute("UPDATE events SET end_ts = start_ts WHERE id = ?", (event_id,))
         conn.execute("UPDATE alerts SET sent_ts = ? WHERE event_id = ?", (ts, event_id))
-    # Old per-label counts: persons = heads seen (helmet + no_helmet), violators = no_helmet / no_vest boxes
     old = {}
     for d, cam, label, n in conn.execute("SELECT day, camera, label, count FROM daily_stats_v1").fetchall():
         old.setdefault((d, f"cam{cam}"), {})[label] = n
@@ -310,7 +290,6 @@ def migrate_v1(conn: sqlite3.Connection) -> None:
 
 
 class AlertHub:
-    """Dashboards connected to /ws/alerts."""
 
     def __init__(self):
         self.clients: set[WebSocket] = set()

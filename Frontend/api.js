@@ -1,6 +1,6 @@
 const USE_MOCK = false;
 const API_URL = "http://127.0.0.1:8000";
-const API_BASE = API_URL + "/api"; // REST paths follow docs/api_contracts.md
+const API_BASE = API_URL + "/api";
 
 const VIOLATION_CLASSES = ["no_helmet", "no_vest", "no_helmet_no_vest", "chain_open"];
 
@@ -135,8 +135,6 @@ async function getAnalytics(days) {
   return getJson("/analytics?days=" + days);
 }
 
-// Today's statistics: persons_seen, helmet/vest compliance and safety_index (0-1), violations,
-// by_violation, active_alerts (not acknowledged), alerts_sent
 async function getStatistics(from, to) {
   if (USE_MOCK) {
     return { persons_seen: 40, helmet_compliance: 0.85, vest_compliance: 0.9, safety_index: 0.8625, violations: 12,
@@ -243,10 +241,6 @@ async function detectImage(file) {
   return getJson("/detect", { method: "POST", body: form });
 }
 
-// Live messages over the WebSocket /ws/alerts (docs/api_contracts.md): onMessage gets
-// {type: "violation", alert_id, ...}, {type: "event_end", ...}, {type: "stats", ...} or {type: "ack", ...};
-// onExpired runs when the session is no longer valid; onStatus(true/false) says whether the live
-// connection is up. Reconnects by itself (1s, 2s, 4s ... up to 30s).
 function connectAlerts(onMessage, onExpired, onStatus) {
   onStatus = onStatus || function () {};
   if (USE_MOCK) return onStatus(true);
@@ -277,8 +271,6 @@ function connectAlerts(onMessage, onExpired, onStatus) {
   open();
 }
 
-// A snapshot (snapshot_url from the API, e.g. "/api/snapshots/....jpg") as an object URL for <img src>.
-// The request needs the login token, so it can't be a plain <img src>. Cached because lists redraw often.
 const snapshotCache = new Map();
 async function getSnapshotUrl(snapshotUrl) {
   if (snapshotCache.has(snapshotUrl)) return snapshotCache.get(snapshotUrl);

@@ -127,7 +127,7 @@ const FIXED = {
 };
 
 const I18N_DEFAULT_API = "http://127.0.0.1:8000";
-const CACHE_KEY = "i18n_cache_ar_v2";
+const CACHE_KEY = "i18n_cache_ar_v3";
 
 let arCache = {};
 try {

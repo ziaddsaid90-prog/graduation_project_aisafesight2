@@ -97,6 +97,6 @@ Arabic needs a font with Arabic letters; by default `C:\Windows\Fontsrial.ttf` 
 The site texts are written in English only (`Frontend/i18n.js`). Arabic comes from local MarianMT models (`Helsinki-NLP/opus-mt-en-ar` and `opus-mt-ar-en`) through `POST /api/translate` (`{texts, source, target}`, no login needed, en<->ar only). The models download once into the Hugging Face cache (~600 MB) and then run offline, on the GPU if there is one.
 
 - Every translation is stored in the `translations` table, so a text is translated only once; the browser also keeps them in localStorage.
-- Wrong translations are corrected in `api/translation_fixes.json` (exact English text -> correct Arabic). A fix always wins over the model; restart the API after editing. If a correction does not show in the browser, clear the site's localStorage (key `i18n_cache_ar_v2`).
+- Wrong translations are corrected in `api/translation_fixes.json` (exact English text -> correct Arabic). A fix always wins over the model; restart the API after editing. If a correction does not show in the browser, clear the site's localStorage (key `i18n_cache_ar_v3`).
 - If the API is down, texts without a stored translation show in English.
 - Set `SAFESIGHT_TRANSLATE=0` to skip loading the models at start-up (they then load on the first request).
