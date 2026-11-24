@@ -52,6 +52,30 @@
         </div>
       </section>
 
+      <section class="camera" data-permission="check_image">
+        <h2 data-i18n="checkImage"></h2>
+        <p id="modelNotice" class="notice" hidden></p>
+        <input type="file" id="imageInput" accept="image/*" />
+        <canvas id="preview" hidden></canvas>
+        <p id="status"></p>
+      </section>
+
+      <section class="alerts" data-permission="view_alerts">
+        <h2 data-i18n="recentAlerts"></h2>
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="time"></th>
+              <th data-i18n="camera"></th>
+              <th data-i18n="violation"></th>
+              <th data-i18n="severity"></th>
+              <th data-i18n="frame"></th>
+            </tr>
+          </thead>
+          <tbody id="alertsBody"></tbody>
+        </table>
+      </section>
+
       <section class="alerts" data-permission="view_stats">
         <div class="section-head">
           <h2 data-i18n="analytics"></h2>
@@ -80,29 +104,6 @@
             <div class="chart-box"><canvas id="chartCompliance"></canvas></div>
           </div>
         </div>
-      </section>
-
-      <section class="camera" data-permission="check_image">
-        <h2 data-i18n="checkImage"></h2>
-        <p id="modelNotice" class="notice" hidden></p>
-        <input type="file" id="imageInput" accept="image/*" />
-        <canvas id="preview" hidden></canvas>
-        <p id="status"></p>
-      </section>
-
-      <section class="alerts" data-permission="view_alerts">
-        <h2 data-i18n="recentAlerts"></h2>
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="time"></th>
-              <th data-i18n="camera"></th>
-              <th data-i18n="violation"></th>
-              <th data-i18n="severity"></th>
-            </tr>
-          </thead>
-          <tbody id="alertsBody"></tbody>
-        </table>
       </section>
 
       <section class="alerts" data-permission="view_reports">
@@ -146,6 +147,10 @@
         </table>
       </section>
     </main>
+
+    <div id="frameView" class="frame-view" hidden onclick="this.hidden = true">
+      <img id="frameViewImg" alt="" />
+    </div>
 
     <script src="i18n.js"></script>
     <script src="api.js"></script>
@@ -319,6 +324,23 @@
 
       let newAlertIds = new Set();
 
+      async function showAlertFrame(cell, id) {
+        try {
+          const url = await getAlertFrameUrl(id);
+          const img = document.createElement("img");
+          img.src = url;
+          img.className = "alert-frame";
+          img.alt = t("frame");
+          img.onclick = function () {
+            document.getElementById("frameViewImg").src = url;
+            document.getElementById("frameView").hidden = false;
+          };
+          cell.appendChild(img);
+        } catch (e) {
+          cell.textContent = "-";
+        }
+      }
+
       async function renderAll() {
         try {
           if (hasPermission("view_stats")) {
@@ -334,7 +356,7 @@
           const alerts = await getAlerts();
           tbody.innerHTML = "";
           if (alerts.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="empty">${t("noAlerts")}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="empty">${t("noAlerts")}</td></tr>`;
           }
           alerts.forEach(function (a) {
             const row = document.createElement("tr");
@@ -343,8 +365,10 @@
               `<td>${a.time}</td>` +
               `<td>${t("camera")} ${a.camera}</td>` +
               `<td>${t(a.violation)}</td>` +
-              `<td class="${a.level}">${t(a.level)}</td>`;
+              `<td class="${a.level}">${t(a.level)}</td>` +
+              `<td class="frame-cell">${a.hasFrame ? "" : "-"}</td>`;
             tbody.appendChild(row);
+            if (a.hasFrame) showAlertFrame(row.lastElementChild, a.id);
           });
         } catch (e) {
           if (e.status === 401) return logout();

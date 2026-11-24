@@ -245,3 +245,21 @@ function connectAlerts(onMessage, onExpired) {
   }
   open();
 }
+
+// The violation frame (camera image with boxes) of one alert, as an object URL for <img src>.
+// Cached per alert because the alerts table is redrawn on every refresh.
+const alertFrameCache = new Map();
+async function getAlertFrameUrl(id) {
+  if (alertFrameCache.has(id)) return alertFrameCache.get(id);
+  const res = await fetch(API_URL + "/alerts/" + id + "/frame.jpg", {
+    headers: { Authorization: "Bearer " + getSession().token },
+  });
+  if (!res.ok) {
+    const err = new Error("HTTP " + res.status);
+    err.status = res.status;
+    throw err;
+  }
+  const url = URL.createObjectURL(await res.blob());
+  alertFrameCache.set(id, url);
+  return url;
+}

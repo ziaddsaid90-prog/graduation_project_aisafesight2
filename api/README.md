@@ -32,7 +32,8 @@ Forgot password: there is no email server yet, so `/auth/forgot-password` prints
 | POST | `/auth/forgot-password` (JSON `email`) | - | always `{ok: true}` |
 | POST | `/auth/reset-password` (JSON `token`, `password` >= 8 chars) | - | `{ok: true}`, 400 if the link is invalid/expired |
 | POST | `/detect` (form: `file`, optional `camera`) | `check_image` | `{width, height, detections: [{label, confidence, box: [x1,y1,x2,y2], severity}]}` |
-| GET | `/alerts?limit=20` | `view_alerts` | latest alerts `[{id, time, date, camera, violation, level}]` |
+| GET | `/alerts?limit=20` | `view_alerts` | latest alerts `[{id, time, date, camera, violation, level, hasFrame}]` |
+| GET | `/alerts/<id>/frame.jpg` | `view_alerts` | the camera frame of that alert with the boxes drawn, 404 if it has none |
 | WebSocket | `/ws/alert` | `view_alerts` | live push, see below |
 | GET | `/stats` | `view_stats` | `{cameras, violationsToday, compliance}` |
 | GET | `/analytics?days=7` | `view_stats` | chart data: `violationsByHour` (today, 24 values), `days` + `violationsByDay` + `complianceByDay`, `violationsByType` |

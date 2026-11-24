@@ -287,3 +287,9 @@ th, td { padding: 12px; text-align: start; border-bottom: 1px solid var(--border
 
 .alert-new { animation: alert-flash 1s ease-in-out 3; }
 @keyframes alert-flash { 50% { background: rgba(220, 38, 38, 0.25); } }
+
+.frame-cell { width: 110px; }
+.alert-frame { width: 96px; height: 64px; object-fit: cover; border-radius: 6px; cursor: zoom-in; display: block; border: 1px solid var(--border); }
+.frame-view { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.85); display: flex; align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.frame-view[hidden] { display: none; }
+.frame-view img { max-width: 92vw; max-height: 88vh; border-radius: 8px; }

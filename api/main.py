@@ -110,6 +110,8 @@ def init_db() -> None:
         """)
         if "track_id" not in [r["name"] for r in conn.execute("PRAGMA table_info(detections)")]:
             conn.execute("ALTER TABLE detections ADD COLUMN track_id INTEGER REFERENCES tracks(id)")
+        if "incident_id" not in [r["name"] for r in conn.execute("PRAGMA table_info(alerts)")]:
+            conn.execute("ALTER TABLE alerts ADD COLUMN incident_id INTEGER")
 
         stamp = datetime.now().isoformat(timespec="seconds")
         conn.executemany("INSERT OR IGNORE INTO cameras (id, name, created_at) VALUES (?, ?, ?)",
@@ -124,6 +126,13 @@ def init_db() -> None:
             conn.execute("INSERT INTO alerts (created_at, camera, label, severity, confidence) "
                          "SELECT created_at, camera, label, severity, confidence FROM detections "
                          "WHERE severity IS NOT NULL ORDER BY id")
+
+
+def link_old_alerts() -> None:
+    """Alerts stored before incident_id existed get the incident (snapshot) saved in the same /detect call."""
+    with db() as conn:
+        conn.execute("UPDATE alerts SET incident_id = (SELECT id FROM incidents i WHERE i.created_at = alerts.created_at "
+                     "AND i.camera = alerts.camera ORDER BY id LIMIT 1) WHERE incident_id IS NULL")
 
 
 def iou(a: list[float], b: list[float]) -> float:
@@ -169,7 +178,8 @@ def assign_tracks(conn: sqlite3.Connection, camera: int, now: datetime, detectio
 
 def alert_payload(row: sqlite3.Row) -> dict:
     return {"id": row["id"], "time": row["created_at"][11:16], "date": row["created_at"][:10],
-            "camera": row["camera"], "violation": row["label"], "level": row["severity"]}
+            "camera": row["camera"], "violation": row["label"], "level": row["severity"],
+            "hasFrame": row["incident_id"] is not None}
 
 
 class AlertHub:
@@ -192,6 +202,7 @@ hub = AlertHub()
 init_db()
 auth = Auth(db, SEED_FILE)
 reports = Reports(db, Path(os.environ.get("SAFESIGHT_SNAPSHOTS", ROOT / "api" / "snapshots")))
+link_old_alerts()
 translator = Translator(db, ROOT / "api" / "translation_fixes.json")
 if os.environ.get("SAFESIGHT_TRANSLATE", "1") != "0":
     translator.preload()
@@ -295,6 +306,8 @@ async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depen
             "severity": SEVERITY.get(label),
         })
 
+    incident_id = reports.record_incident(image, detections, camera, WEIGHTS.name, when)
+
     with db() as conn:
         conn.execute("INSERT OR IGNORE INTO cameras (id, name, created_at) VALUES (?, ?, ?)",
                      (camera, f"Camera {camera}", now))
@@ -309,13 +322,13 @@ async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depen
             [(now[:10], camera, d["label"]) for d in detections],
         )
         alert_ids = [conn.execute(
-            "INSERT INTO alerts (created_at, camera, track_id, label, severity, confidence) VALUES (?, ?, ?, ?, ?, ?)",
-            (now, camera, d["track_id"], d["label"], d["severity"], d["confidence"])).lastrowid
+            "INSERT INTO alerts (created_at, camera, track_id, label, severity, confidence, incident_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (now, camera, d["track_id"], d["label"], d["severity"], d["confidence"], incident_id)).lastrowid
             for d in detections if d.get("track_id") in new_tracks]
         new_alerts = [alert_payload(r) for r in conn.execute(
             f"SELECT * FROM alerts WHERE id IN ({','.join('?' * len(alert_ids))}) ORDER BY id DESC", alert_ids)]
 
-    incident_id = reports.record_incident(image, detections, camera, WEIGHTS.name, when)
     if detections:
         await hub.broadcast({"type": "detections", "camera": camera, "alerts": new_alerts})
 
@@ -350,6 +363,18 @@ def alerts(limit: int = 20, user=Depends(auth.require("view_alerts"))):
     with db() as conn:
         rows = conn.execute("SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [alert_payload(r) for r in rows]
+
+
+@app.get("/alerts/{alert_id}/frame.jpg")
+def alert_frame(alert_id: int, user=Depends(auth.require("view_alerts"))):
+    """The camera frame of the alert with the boxes drawn (the incident snapshot saved by /detect)."""
+    with db() as conn:
+        row = conn.execute("SELECT i.snapshot FROM alerts a JOIN incidents i ON i.id = a.incident_id "
+                           "WHERE a.id = ?", (alert_id,)).fetchone()
+    path = reports.snapshot_dir / row["snapshot"] if row else None
+    if path is None or not path.exists():
+        raise HTTPException(status_code=404, detail="No frame for this alert")
+    return Response(path.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.websocket("/ws/alert")

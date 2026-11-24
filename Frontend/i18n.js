@@ -72,6 +72,7 @@ const translations = {
     camera: "Camera",
     violation: "Violation",
     severity: "Severity",
+    frame: "Frame",
     high: "High",
     medium: "Medium",
     low: "Low",
