@@ -317,6 +317,8 @@
             : "");
       }
 
+      let newAlertIds = new Set();
+
       async function renderAll() {
         try {
           if (hasPermission("view_stats")) {
@@ -336,6 +338,7 @@
           }
           alerts.forEach(function (a) {
             const row = document.createElement("tr");
+            if (newAlertIds.has(a.id)) row.className = "alert-new";
             row.innerHTML =
               `<td>${a.time}</td>` +
               `<td>${t("camera")} ${a.camera}</td>` +
@@ -412,6 +415,20 @@
         renderAll();
         renderCharts();
       }, 30000);
+      if (hasPermission("view_alerts")) {
+        connectAlerts(function (msg) {
+          newAlertIds = new Set(msg.alerts.map(function (a) { return a.id; }));
+          renderAll();
+          renderCharts();
+          renderReports();
+          setTimeout(function () {
+            newAlertIds = new Set();
+            document.querySelectorAll(".alert-new").forEach(function (r) {
+              r.classList.remove("alert-new");
+            });
+          }, 5000);
+        }, logout);
+      }
 </script>
   </body>
 </html>

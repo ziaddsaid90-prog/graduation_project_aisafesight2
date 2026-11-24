@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
+from fastapi import (Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile,
+                     WebSocket, WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from ultralytics import YOLO
 
-from api.auth import Auth, user_payload
+from api.auth import ROLE_PERMISSIONS, Auth, user_payload
 from api.reports import Reports
 from api.translator import Translator
 
@@ -28,6 +30,8 @@ BI_REPORT = Path(os.environ.get("SAFESIGHT_BI_REPORT", ROOT / "powerbi" / "AI_Sa
 SEVERITY = {"no_helmet": "high", "chain_open": "high", "no_vest": "medium"}
 PPE_PAIRS = [("helmet", "no_helmet"), ("vest", "no_vest")]
 CONF_THRESHOLD = float(os.environ.get("SAFESIGHT_CONF", 0.4))
+TRACK_GAP = int(os.environ.get("SAFESIGHT_TRACK_GAP", 10))  # seconds before a lost violation counts as new
+TRACK_IOU = 0.3
 
 
 def find_weights() -> Path:
@@ -66,7 +70,123 @@ def init_db() -> None:
                 severity   TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_detections_created ON detections(created_at);
+
+            CREATE TABLE IF NOT EXISTS cameras (
+                id         INTEGER PRIMARY KEY,
+                name       TEXT    NOT NULL,
+                location   TEXT,
+                active     INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS tracks (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                camera     INTEGER NOT NULL REFERENCES cameras(id),
+                label      TEXT    NOT NULL,
+                first_seen TEXT    NOT NULL,
+                last_seen  TEXT    NOT NULL,
+                hits       INTEGER NOT NULL DEFAULT 1,
+                x1 REAL, y1 REAL, x2 REAL, y2 REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_tracks_open ON tracks(camera, label, last_seen);
+
+            CREATE TABLE IF NOT EXISTS alerts (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at   TEXT    NOT NULL,
+                camera       INTEGER NOT NULL REFERENCES cameras(id),
+                track_id     INTEGER REFERENCES tracks(id),
+                label        TEXT    NOT NULL,
+                severity     TEXT    NOT NULL,
+                confidence   REAL
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_stats (
+                day    TEXT    NOT NULL,
+                camera INTEGER NOT NULL,
+                label  TEXT    NOT NULL,
+                count  INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, camera, label)
+            );
         """)
+        if "track_id" not in [r["name"] for r in conn.execute("PRAGMA table_info(detections)")]:
+            conn.execute("ALTER TABLE detections ADD COLUMN track_id INTEGER REFERENCES tracks(id)")
+
+        stamp = datetime.now().isoformat(timespec="seconds")
+        conn.executemany("INSERT OR IGNORE INTO cameras (id, name, created_at) VALUES (?, ?, ?)",
+                         [(i, f"Camera {i}", stamp) for i in range(1, CAMERAS + 1)])
+        # Fill the new tables once from detections stored before they existed
+        conn.execute("INSERT OR IGNORE INTO cameras (id, name, created_at) "
+                     "SELECT DISTINCT camera, 'Camera ' || camera, ? FROM detections", (stamp,))
+        if conn.execute("SELECT COUNT(*) FROM daily_stats").fetchone()[0] == 0:
+            conn.execute("INSERT INTO daily_stats (day, camera, label, count) "
+                         "SELECT substr(created_at, 1, 10), camera, label, COUNT(*) FROM detections GROUP BY 1, 2, 3")
+        if conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0] == 0:
+            conn.execute("INSERT INTO alerts (created_at, camera, label, severity, confidence) "
+                         "SELECT created_at, camera, label, severity, confidence FROM detections "
+                         "WHERE severity IS NOT NULL ORDER BY id")
+
+
+def iou(a: list[float], b: list[float]) -> float:
+    w = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    h = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = w * h
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def assign_tracks(conn: sqlite3.Connection, camera: int, now: datetime, detections: list[dict]) -> list[int]:
+    """Give every violation a track. A violation that matches a track seen on the same camera in the
+    last TRACK_GAP seconds (same label, boxes overlap) continues it; otherwise it starts a new track.
+    Returns the ids of the new tracks - only those raise an alert, so one worker without a helmet
+    standing in front of the camera is one alert, not one per frame."""
+    stamp = now.isoformat(timespec="seconds")
+    since = (now - timedelta(seconds=TRACK_GAP)).isoformat(timespec="seconds")
+    used: set[int] = set()
+    new_tracks = []
+    for d in detections:
+        if not d["severity"]:
+            continue
+        open_tracks = conn.execute(
+            "SELECT id, x1, y1, x2, y2 FROM tracks WHERE camera = ? AND label = ? AND last_seen >= ?",
+            (camera, d["label"], since)).fetchall()
+        best, best_iou = None, TRACK_IOU
+        for t in open_tracks:
+            overlap = iou(d["box"], [t["x1"], t["y1"], t["x2"], t["y2"]])
+            if t["id"] not in used and overlap >= best_iou:
+                best, best_iou = t["id"], overlap
+        if best is None:
+            best = conn.execute(
+                "INSERT INTO tracks (camera, label, first_seen, last_seen, x1, y1, x2, y2) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (camera, d["label"], stamp, stamp, *d["box"])).lastrowid
+            new_tracks.append(best)
+        else:
+            conn.execute("UPDATE tracks SET last_seen = ?, hits = hits + 1, x1 = ?, y1 = ?, x2 = ?, y2 = ? WHERE id = ?",
+                         (stamp, *d["box"], best))
+        used.add(best)
+        d["track_id"] = best
+    return new_tracks
+
+
+def alert_payload(row: sqlite3.Row) -> dict:
+    return {"id": row["id"], "time": row["created_at"][11:16], "date": row["created_at"][:10],
+            "camera": row["camera"], "violation": row["label"], "level": row["severity"]}
+
+
+class AlertHub:
+    """Dashboards connected to /ws/alert; /detect pushes new alerts to all of them."""
+
+    def __init__(self):
+        self.clients: set[WebSocket] = set()
+
+    async def broadcast(self, message: dict) -> None:
+        for ws in list(self.clients):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                self.clients.discard(ws)
+
+
+hub = AlertHub()
 
 
 init_db()
@@ -176,12 +296,28 @@ async def detect(file: UploadFile = File(...), camera: int = Form(1), user=Depen
         })
 
     with db() as conn:
+        conn.execute("INSERT OR IGNORE INTO cameras (id, name, created_at) VALUES (?, ?, ?)",
+                     (camera, f"Camera {camera}", now))
+        new_tracks = set(assign_tracks(conn, camera, when, detections))
         conn.executemany(
-            "INSERT INTO detections (created_at, camera, label, confidence, severity) VALUES (?, ?, ?, ?, ?)",
-            [(now, camera, d["label"], d["confidence"], d["severity"]) for d in detections],
+            "INSERT INTO detections (created_at, camera, label, confidence, severity, track_id) VALUES (?, ?, ?, ?, ?, ?)",
+            [(now, camera, d["label"], d["confidence"], d["severity"], d.get("track_id")) for d in detections],
         )
+        conn.executemany(
+            "INSERT INTO daily_stats (day, camera, label, count) VALUES (?, ?, ?, 1) "
+            "ON CONFLICT (day, camera, label) DO UPDATE SET count = count + 1",
+            [(now[:10], camera, d["label"]) for d in detections],
+        )
+        alert_ids = [conn.execute(
+            "INSERT INTO alerts (created_at, camera, track_id, label, severity, confidence) VALUES (?, ?, ?, ?, ?, ?)",
+            (now, camera, d["track_id"], d["label"], d["severity"], d["confidence"])).lastrowid
+            for d in detections if d.get("track_id") in new_tracks]
+        new_alerts = [alert_payload(r) for r in conn.execute(
+            f"SELECT * FROM alerts WHERE id IN ({','.join('?' * len(alert_ids))}) ORDER BY id DESC", alert_ids)]
 
     incident_id = reports.record_incident(image, detections, camera, WEIGHTS.name, when)
+    if detections:
+        await hub.broadcast({"type": "detections", "camera": camera, "alerts": new_alerts})
 
     return {"width": image.width, "height": image.height, "detections": detections, "incident_id": incident_id}
 
@@ -212,29 +348,50 @@ def bi_report(user=Depends(auth.require("view_reports"))):
 @app.get("/alerts")
 def alerts(limit: int = 20, user=Depends(auth.require("view_alerts"))):
     with db() as conn:
-        rows = conn.execute(
-            "SELECT created_at, camera, label, severity FROM detections "
-            "WHERE severity IS NOT NULL ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
-    return [{"time": r["created_at"][11:16], "date": r["created_at"][:10], "camera": r["camera"],
-             "violation": r["label"], "level": r["severity"]} for r in rows]
+        rows = conn.execute("SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [alert_payload(r) for r in rows]
+
+
+@app.websocket("/ws/alert")
+async def ws_alert(ws: WebSocket):
+    """Live alerts. The browser cannot send an Authorization header on a WebSocket, so the first
+    message must be {"token": "..."}; the token is not put in the URL so it never lands in logs.
+    Close codes: 4401 not signed in / session expired, 4403 role has no view_alerts."""
+    await ws.accept()
+    try:
+        first = await asyncio.wait_for(ws.receive_json(), timeout=10)
+        user = auth.user_for_token(str(first.get("token", "")))
+    except (asyncio.TimeoutError, HTTPException, ValueError, AttributeError, WebSocketDisconnect):
+        await ws.close(code=4401)
+        return
+    if "view_alerts" not in ROLE_PERMISSIONS.get(user["role"], []):
+        await ws.close(code=4403)
+        return
+    await ws.send_json({"type": "ready"})
+    hub.clients.add(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hub.clients.discard(ws)
 
 
 @app.get("/stats")
 def stats(user=Depends(auth.require("view_stats"))):
     today = datetime.now().date().isoformat()
     with db() as conn:
-        violations = conn.execute(
-            "SELECT COUNT(*) FROM detections WHERE severity IS NOT NULL AND created_at >= ?", (today,)
-        ).fetchone()[0]
+        cameras = conn.execute("SELECT COUNT(*) FROM cameras WHERE active = 1").fetchone()[0]
         counts = dict(conn.execute(
-            "SELECT label, COUNT(*) FROM detections WHERE created_at >= ? GROUP BY label", (today,)
+            "SELECT label, SUM(count) FROM daily_stats WHERE day = ? GROUP BY label", (today,)
         ).fetchall())
 
+    violations = sum(n for label, n in counts.items() if label in SEVERITY)
     worn = sum(counts.get(ok, 0) for ok, _ in PPE_PAIRS)
     missing = sum(counts.get(bad, 0) for _, bad in PPE_PAIRS)
     compliance = round(100 * worn / (worn + missing)) if worn + missing else 100
-    return {"cameras": CAMERAS, "violationsToday": violations, "compliance": compliance}
+    return {"cameras": cameras, "violationsToday": violations, "compliance": compliance}
 
 
 @app.get("/analytics")
@@ -248,8 +405,7 @@ def analytics(days: int = 7, user=Depends(auth.require("view_stats"))):
             "SELECT CAST(substr(created_at, 12, 2) AS INTEGER), COUNT(*) FROM detections "
             "WHERE severity IS NOT NULL AND created_at >= ? GROUP BY 1", (today.isoformat(),)).fetchall())
         daily_rows = conn.execute(
-            "SELECT substr(created_at, 1, 10) AS d, label, COUNT(*) FROM detections "
-            "WHERE created_at >= ? GROUP BY d, label", (start,)).fetchall()
+            "SELECT day, label, SUM(count) FROM daily_stats WHERE day >= ? GROUP BY day, label", (start,)).fetchall()
         by_type = dict(conn.execute(
             "SELECT label, COUNT(*) FROM detections WHERE severity IS NOT NULL AND created_at >= ? GROUP BY label",
             (start,)).fetchall())

@@ -216,3 +216,32 @@ async function detectImage(file) {
   form.append("file", file);
   return getJson("/detect", { method: "POST", body: form });
 }
+
+// Live alerts over WebSocket. onMessage gets {type: "detections", camera, alerts: [...]} every time
+// /detect saves something; onExpired runs when the session is no longer valid.
+// Reconnects by itself (1s, 2s, 4s ... up to 30s) if the API restarts.
+function connectAlerts(onMessage, onExpired) {
+  if (USE_MOCK) return;
+  const session = getSession();
+  if (!session) return;
+  const url = API_URL.replace(/^http/, "ws") + "/ws/alert";
+  let retry = 1000;
+  function open() {
+    const ws = new WebSocket(url);
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ token: session.token }));
+    };
+    ws.onmessage = function (e) {
+      const msg = JSON.parse(e.data);
+      if (msg.type === "ready") retry = 1000;
+      else onMessage(msg);
+    };
+    ws.onclose = function (e) {
+      if (e.code === 4401) return onExpired();
+      if (e.code === 4403) return;
+      setTimeout(open, retry);
+      retry = Math.min(retry * 2, 30000);
+    };
+  }
+  open();
+}

@@ -32,7 +32,8 @@ Forgot password: there is no email server yet, so `/auth/forgot-password` prints
 | POST | `/auth/forgot-password` (JSON `email`) | - | always `{ok: true}` |
 | POST | `/auth/reset-password` (JSON `token`, `password` >= 8 chars) | - | `{ok: true}`, 400 if the link is invalid/expired |
 | POST | `/detect` (form: `file`, optional `camera`) | `check_image` | `{width, height, detections: [{label, confidence, box: [x1,y1,x2,y2], severity}]}` |
-| GET | `/alerts?limit=20` | `view_alerts` | latest violations `[{time, date, camera, violation, level}]` |
+| GET | `/alerts?limit=20` | `view_alerts` | latest alerts `[{id, time, date, camera, violation, level}]` |
+| WebSocket | `/ws/alert` | `view_alerts` | live push, see below |
 | GET | `/stats` | `view_stats` | `{cameras, violationsToday, compliance}` |
 | GET | `/analytics?days=7` | `view_stats` | chart data: `violationsByHour` (today, 24 values), `days` + `violationsByDay` + `complianceByDay`, `violationsByType` |
 | GET | `/users` | `view_users` | `[{name, email, role}]` |
@@ -41,6 +42,24 @@ Forgot password: there is no email server yet, so `/auth/forgot-password` prints
 | GET | `/health` | - | loaded weights and class names |
 
 Violations and severity: `no_helmet` high, `chain_open` high, `no_vest` medium. Compliance = helmet+vest seen / (helmet+vest+no_helmet+no_vest) today. `SAFESIGHT_CAMERAS` (default 1) is the number shown on the cameras card.
+
+## Database tables
+| Table | What it holds |
+|---|---|
+| `cameras` | one row per camera (`id, name, location, active`). Cameras 1..`SAFESIGHT_CAMERAS` are created at start-up, and any camera number sent to `/detect` is added automatically. The cameras card counts the active ones. |
+| `detections` | the events: every box the model found (`label, confidence, severity, camera, track_id`) |
+| `tracks` | one row per violation followed over time on one camera. A violation that overlaps (IoU >= 0.3) a track of the same label seen in the last `SAFESIGHT_TRACK_GAP` seconds (default 10) continues it, otherwise a new track starts. |
+| `alerts` | one row per **new** track, so a worker without a helmet standing in front of the camera is one alert, not one per frame |
+| `daily_stats` | count per `day, camera, label`, updated on every `/detect`; `/stats` and the daily charts read it |
+
+Rows stored before these tables existed are copied into `cameras`, `alerts` and `daily_stats` once, the first time the API starts.
+
+## Live alerts (WebSocket `/ws/alert`)
+1. Connect to `ws://127.0.0.1:8000/ws/alert`
+2. Send `{"token": "<token from /auth/login>"}` as the first message (browsers cannot set headers on a WebSocket, and a token in the URL would end up in logs)
+3. The server answers `{"type": "ready"}`, then after every `/detect` that found something it sends `{"type": "detections", "camera": 1, "alerts": [...new alerts, same shape as /alerts...]}`
+
+Close code 4401 = not signed in / expired (the dashboard logs out), 4403 = the role has no `view_alerts`. The dashboard reconnects by itself if the API restarts, and still refreshes every 30 s as a fallback.
 
 ## Incident reports (PDF)
 Every `/detect` call that finds a violation stores an incident and a snapshot with the boxes drawn (`api/snapshots/<id>.jpg`, not committed). The PDF is built when someone opens it, in the language they ask for: the sentences are fixed templates per language in `api/reports.py` (`TEXT`), only numbers, dates, camera and violation types change. Only `project_manager` and `hse` have `view_reports`.

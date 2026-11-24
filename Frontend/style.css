@@ -284,3 +284,6 @@ th, td { padding: 12px; text-align: start; border-bottom: 1px solid var(--border
 @media (max-width: 600px) {
   .chart-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+.alert-new { animation: alert-flash 1s ease-in-out 3; }
+@keyframes alert-flash { 50% { background: rgba(220, 38, 38, 0.25); } }
