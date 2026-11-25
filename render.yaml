@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: ai-safesight
+    runtime: docker
+    plan: free
+    branch: feat/training
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: SAFESIGHT_SEED_USERS
+        sync: false
+      - key: SAFESIGHT_INGEST_KEY
+        sync: false
+      - key: SAFESIGHT_FRONTEND_URL
+        sync: false

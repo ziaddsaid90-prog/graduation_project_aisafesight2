@@ -25,3 +25,6 @@ desktop.ini
 api/*.db
 api/seed_users.json
 api/snapshots/
+
+# Online deploy secrets (never commit)
+deploy/*.local.*

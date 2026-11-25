@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+websockets
+python-multipart
+bcrypt
+pillow
+fpdf2
+uharfbuzz

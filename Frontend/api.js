@@ -1,5 +1,7 @@
 const USE_MOCK = false;
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = location.protocol === "file:" || location.port === "5500"
+  ? "http://127.0.0.1:8000"
+  : location.origin;
 const API_BASE = API_URL + "/api";
 
 const VIOLATION_CLASSES = ["no_helmet", "no_vest", "no_helmet_no_vest", "chain_open"];

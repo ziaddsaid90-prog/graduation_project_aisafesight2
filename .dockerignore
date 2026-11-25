@@ -1,0 +1,8 @@
+*
+!api/
+!Frontend/
+!powerbi/AI_SafeSight_CHV.pdf
+api/*.db
+api/snapshots/
+api/seed_users.json
+**/__pycache__/

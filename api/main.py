@@ -14,9 +14,9 @@ from typing import Literal
 from fastapi import (APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response,
                      UploadFile, WebSocket, WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
-from ultralytics import YOLO
 
 from api import live
 from api.auth import ROLE_PERMISSIONS, Auth, user_payload
@@ -25,9 +25,14 @@ from api.translator import Translator
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("SAFESIGHT_DB", ROOT / "api" / "safesight.db"))
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 SEED_FILE = ROOT / "api" / "seed_users.json"
-if not SEED_FILE.exists():
+if os.environ.get("SAFESIGHT_SEED_USERS"):
+    SEED_FILE = DB_PATH.parent / "seed_users.json"
+    SEED_FILE.write_text(os.environ["SAFESIGHT_SEED_USERS"], encoding="utf-8")
+elif not SEED_FILE.exists():
     SEED_FILE = ROOT / "api" / "seed_users.example.json"
+SERVE_FRONTEND = os.environ.get("SAFESIGHT_SERVE_FRONTEND", "0") == "1"
 CAMERAS = int(os.environ.get("SAFESIGHT_CAMERAS", 1))
 FRONTEND_URL = os.environ.get("SAFESIGHT_FRONTEND_URL", "http://127.0.0.1:5500/Frontend")
 BI_REPORT = Path(os.environ.get("SAFESIGHT_BI_REPORT", ROOT / "powerbi" / "AI_SafeSight_CHV.pdf"))
@@ -47,10 +52,14 @@ def find_weights() -> Path:
     return ROOT / "yolo11s.pt"
 
 
-WEIGHTS = find_weights()
-model = YOLO(str(WEIGHTS))
-IS_PPE_MODEL = any(name in live.SEVERITY for name in model.names.values())
-if not IS_PPE_MODEL:
+WEIGHTS = model = None
+IS_PPE_MODEL = False
+if os.environ.get("SAFESIGHT_DETECT", "1") != "0":
+    from ultralytics import YOLO
+    WEIGHTS = find_weights()
+    model = YOLO(str(WEIGHTS))
+    IS_PPE_MODEL = any(name in live.SEVERITY for name in model.names.values())
+if model is not None and not IS_PPE_MODEL:
     print(f"WARNING: {WEIGHTS.name} has no violation classes. /api/detect works but will not report violations; "
           "live violations come from the pipeline through /api/ingest/events.")
 
@@ -87,8 +96,9 @@ def init_db() -> Reports:
 reports = init_db()
 (SNAPSHOT_DIR / "events").mkdir(parents=True, exist_ok=True)
 auth = Auth(db, SEED_FILE)
-translator = Translator(db, ROOT / "api" / "translation_fixes.json")
-if os.environ.get("SAFESIGHT_TRANSLATE", "1") != "0":
+USE_TRANSLATION_MODEL = os.environ.get("SAFESIGHT_TRANSLATE", "1") != "0"
+translator = Translator(db, ROOT / "api" / "translation_fixes.json", use_model=USE_TRANSLATION_MODEL)
+if USE_TRANSLATION_MODEL:
     translator.preload()
 hub = live.AlertHub()
 
@@ -167,8 +177,8 @@ def users(user=Depends(auth.require("view_users"))):
 
 @api.get("/health")
 def health():
-    return {"status": "ok", "weights": WEIGHTS.name, "ppe_model": IS_PPE_MODEL,
-            "classes": list(model.names.values())}
+    return {"status": "ok", "weights": WEIGHTS.name if WEIGHTS else None, "ppe_model": IS_PPE_MODEL,
+            "classes": list(model.names.values()) if model else []}
 
 
 def require_ingest(request: Request, x_api_key: str = Header(default="")) -> None:
@@ -279,6 +289,8 @@ async def ingest_tracks(body: IngestTracks):
 
 @api.post("/detect")
 async def detect(file: UploadFile = File(...), camera: str = Form("cam1"), user=Depends(auth.require("check_image"))):
+    if model is None:
+        raise HTTPException(status_code=503, detail="Image check is turned off on this server")
     try:
         image = Image.open(io.BytesIO(await file.read())).convert("RGB")
     except UnidentifiedImageError:
@@ -523,3 +535,7 @@ async def ws_alerts(ws: WebSocket):
         pass
     finally:
         hub.clients.discard(ws)
+
+
+if SERVE_FRONTEND:
+    app.mount("/", StaticFiles(directory=ROOT / "Frontend", html=True), name="frontend")

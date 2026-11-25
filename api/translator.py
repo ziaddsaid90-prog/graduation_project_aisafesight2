@@ -26,8 +26,9 @@ CREATE TABLE IF NOT EXISTS translations (
 
 
 class Translator:
-    def __init__(self, connect: Callable[[], sqlite3.Connection], fixes_file: Path):
+    def __init__(self, connect: Callable[[], sqlite3.Connection], fixes_file: Path, use_model: bool = True):
         self.connect = connect
+        self.use_model = use_model
         self.fixes_file = fixes_file
         self.fixes = self._load_fixes()
         self._models: dict = {}
@@ -92,7 +93,9 @@ class Translator:
                         f"AND source_text IN ({','.join('?' * len(chunk))})", (source, target, *chunk)).fetchall()
                     cached.update({r[0]: r[1] for r in rows})
             missing = [c for c in cores if c not in cached]
-            if missing:
+            if missing and not self.use_model:
+                cached.update({c: c for c in missing})
+            elif missing:
                 new = self._run_model(pair, missing)
                 with self.connect() as conn:
                     conn.executemany("INSERT OR REPLACE INTO translations VALUES (?, ?, ?, ?)",
