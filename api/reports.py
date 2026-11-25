@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -96,6 +97,11 @@ OK_CLASSES = {"helmet", "vest", "chain_closed"}
 FONT_DIR = Path(os.environ.get("SAFESIGHT_FONT_DIR", r"C:\Windows\Fonts"))
 FONT_REGULAR = os.environ.get("SAFESIGHT_FONT", "arial.ttf")
 FONT_BOLD = os.environ.get("SAFESIGHT_FONT_BOLD", "arialbd.ttf")
+
+
+def camera_label(camera) -> str:
+    m = re.fullmatch(r"cam(\d+)", str(camera))
+    return m.group(1) if m else str(camera)
 
 
 def format_date(dt: datetime, lang: str) -> str:
@@ -225,7 +231,7 @@ class Reports:
 
         sev_color = RED if inc["severity"] == "high" else AMBER
         info = [(t["report_no"], f"#{inc['id']}", NAVY), (t["date"], format_date(when, lang), NAVY),
-                (t["time"], format_time(when, lang), NAVY), (t["camera"], str(inc["camera"]), NAVY),
+                (t["time"], format_time(when, lang), NAVY), (t["camera"], camera_label(inc["camera"]), NAVY),
                 (t["severity"], t[inc["severity"]], sev_color)]
         if rtl:
             info = info[::-1]
@@ -247,7 +253,7 @@ class Reports:
 
         pdf.set_text_color(*NAVY)
         pdf.set_font("main", "", 11)
-        pdf.multi_cell(w, 7, t["summary"].format(count=inc["violations"], camera=inc["camera"],
+        pdf.multi_cell(w, 7, t["summary"].format(count=inc["violations"], camera=camera_label(inc["camera"]),
                                                 date=format_date(when, lang), time=format_time(when, lang)),
                        align=align, new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("main", "", 10)
